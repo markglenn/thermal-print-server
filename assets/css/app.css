@@ -1,0 +1,947 @@
+/* See the Tailwind configuration guide for advanced usage
+   https://tailwindcss.com/docs/configuration */
+
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/thermal_print_server_web";
+
+/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
+   The heroicons installation itself is managed by your mix.exs */
+@plugin "../vendor/heroicons";
+
+/* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
+   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
+   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
+@plugin "../vendor/daisyui" {
+  themes: false;
+}
+
+/* daisyUI theme plugin. You can update this file by fetching the latest version with:
+  curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
+  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
+  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
+@plugin "../vendor/daisyui-theme" {
+  name: "dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: "dark";
+  --color-base-100: oklch(30.33% 0.016 252.42);
+  --color-base-200: oklch(25.26% 0.014 253.1);
+  --color-base-300: oklch(20.15% 0.012 254.09);
+  --color-base-content: oklch(97.807% 0.029 256.847);
+  --color-primary: oklch(58% 0.233 277.117);
+  --color-primary-content: oklch(96% 0.018 272.314);
+  --color-secondary: oklch(58% 0.233 277.117);
+  --color-secondary-content: oklch(96% 0.018 272.314);
+  --color-accent: oklch(60% 0.25 292.717);
+  --color-accent-content: oklch(96% 0.016 293.756);
+  --color-neutral: oklch(37% 0.044 257.287);
+  --color-neutral-content: oklch(98% 0.003 247.858);
+  --color-info: oklch(58% 0.158 241.966);
+  --color-info-content: oklch(97% 0.013 236.62);
+  --color-success: oklch(60% 0.118 184.704);
+  --color-success-content: oklch(98% 0.014 180.72);
+  --color-warning: oklch(66% 0.179 58.318);
+  --color-warning-content: oklch(98% 0.022 95.277);
+  --color-error: oklch(58% 0.253 17.585);
+  --color-error-content: oklch(96% 0.015 12.422);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "../vendor/daisyui-theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(98% 0 0);
+  --color-base-200: oklch(96% 0.001 286.375);
+  --color-base-300: oklch(92% 0.004 286.32);
+  --color-base-content: oklch(21% 0.006 285.885);
+  --color-primary: oklch(70% 0.213 47.604);
+  --color-primary-content: oklch(98% 0.016 73.684);
+  --color-secondary: oklch(55% 0.027 264.364);
+  --color-secondary-content: oklch(98% 0.002 247.839);
+  --color-accent: oklch(0% 0 0);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(44% 0.017 285.786);
+  --color-neutral-content: oklch(98% 0 0);
+  --color-info: oklch(62% 0.214 259.815);
+  --color-info-content: oklch(97% 0.014 254.604);
+  --color-success: oklch(70% 0.14 182.503);
+  --color-success-content: oklch(98% 0.014 180.72);
+  --color-warning: oklch(66% 0.179 58.318);
+  --color-warning-content: oklch(98% 0.022 95.277);
+  --color-error: oklch(58% 0.253 17.585);
+  --color-error-content: oklch(96% 0.015 12.422);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1.5px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Add variants based on LiveView classes */
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Use the data attribute for dark mode  */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* This file is for your main application CSS */
+
+/* ============================================================
+   THERMAL PRINT SERVER — Industrial Control Dashboard
+   ============================================================ */
+
+:root {
+  --th-bg: #f4f1ec;
+  --th-surface: #ffffff;
+  --th-surface-raised: #f9f7f4;
+  --th-border: #e2ddd5;
+  --th-border-bright: #d0c9be;
+  --th-text: #2c2824;
+  --th-text-dim: #8a8078;
+  --th-text-muted: #b8b0a6;
+  --th-amber: #c47a18;
+  --th-amber-dim: #e8c88a;
+  --th-green: #2a8a3e;
+  --th-green-dim: #d4edda;
+  --th-red: #c43030;
+  --th-red-dim: #f5d5d5;
+  --th-blue: #2864b8;
+  --th-blue-dim: #d0e0f5;
+  --th-font-display: 'Outfit', sans-serif;
+  --th-font-mono: 'JetBrains Mono', monospace;
+}
+
+/* -- Base body -- */
+.thermal-body {
+  background: var(--th-bg);
+  color: var(--th-text);
+  font-family: var(--th-font-mono);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* -- Subtle grain overlay -- */
+.scanlines {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 200px;
+}
+
+/* -- Dashboard container -- */
+.thermal-dashboard {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px 40px;
+  position: relative;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.thermal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0 20px;
+  border-bottom: 1px solid var(--th-border);
+  margin-bottom: 32px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo-mark {
+  color: var(--th-amber);
+}
+
+.header-title {
+  font-family: var(--th-font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: var(--th-text);
+  line-height: 1;
+  margin: 0;
+}
+
+.header-subtitle {
+  font-family: var(--th-font-mono);
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--th-text-dim);
+  text-transform: uppercase;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--th-text-muted);
+}
+
+.stat-value {
+  font-family: var(--th-font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.stat-good { color: var(--th-green); }
+.stat-bad { color: var(--th-red); }
+.stat-neutral { color: var(--th-text-dim); }
+.stat-time { color: var(--th-amber); font-variant-numeric: tabular-nums; }
+
+.header-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--th-border);
+}
+
+/* ============================================================
+   SECTION LABELS
+   ============================================================ */
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.label-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--th-border-bright), transparent);
+}
+
+.label-text {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  color: var(--th-text-dim);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   PRINTER CARDS
+   ============================================================ */
+
+.printer-section {
+  margin-bottom: 36px;
+}
+
+.printer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.printer-card {
+  border: 1px solid var(--th-border);
+  border-radius: 8px;
+  background: var(--th-surface);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.printer-card:hover {
+  border-color: var(--th-border-bright);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.printer-card-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+}
+
+.printer-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--th-green);
+  box-shadow: 0 0 8px var(--th-green), 0 0 2px var(--th-green);
+  flex-shrink: 0;
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(42, 138, 62, 0.4); }
+  50% { opacity: 0.5; box-shadow: 0 0 3px rgba(42, 138, 62, 0.2); }
+}
+
+.printer-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.printer-name {
+  font-family: var(--th-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--th-text);
+}
+
+.printer-uri {
+  font-size: 11px;
+  color: var(--th-text-dim);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printer-icon {
+  color: var(--th-text-muted);
+  flex-shrink: 0;
+}
+
+.no-printers {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px;
+  border: 1px dashed var(--th-border);
+  border-radius: 8px;
+}
+
+.no-printers-text {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--th-text-muted);
+}
+
+/* ============================================================
+   JOBS TABLE
+   ============================================================ */
+
+.jobs-section {
+  margin-bottom: 24px;
+}
+
+.jobs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  border: 1px solid var(--th-border);
+  border-radius: 8px;
+  background: var(--th-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.empty-icon {
+  color: var(--th-text-muted);
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.empty-text {
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--th-text-dim);
+}
+
+.empty-subtext {
+  font-size: 11px;
+  color: var(--th-text-muted);
+}
+
+.jobs-table-wrap {
+  border: 1px solid var(--th-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--th-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.jobs-table thead tr {
+  background: var(--th-surface-raised);
+  border-bottom: 1px solid var(--th-border);
+}
+
+.jobs-table th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--th-text-muted);
+  white-space: nowrap;
+}
+
+.jobs-table td {
+  padding: 10px 16px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--th-border);
+}
+
+.jobs-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.job-row {
+  transition: background 0.15s;
+}
+
+.job-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.row-failed {
+  background: rgba(196, 48, 48, 0.04);
+}
+
+.row-failed:hover {
+  background: rgba(196, 48, 48, 0.07);
+}
+
+.row-printing {
+  background: rgba(40, 100, 184, 0.04);
+}
+
+/* -- Status indicator -- */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+
+.status-completed .status-dot {
+  background: var(--th-green);
+  box-shadow: 0 0 5px rgba(42, 138, 62, 0.3);
+}
+
+.status-completed .status-text { color: var(--th-green); }
+
+.status-failed .status-dot {
+  background: var(--th-red);
+  box-shadow: 0 0 5px rgba(196, 48, 48, 0.3);
+  animation: blink-red 1.5s ease-in-out infinite;
+}
+
+@keyframes blink-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-failed .status-text { color: var(--th-red); }
+
+.status-printing .status-dot {
+  background: var(--th-blue);
+  box-shadow: 0 0 5px rgba(40, 100, 184, 0.3);
+  animation: pulse-blue 1s ease-in-out infinite;
+}
+
+@keyframes pulse-blue {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-printing .status-text { color: var(--th-blue); }
+
+.status-queued .status-dot {
+  background: var(--th-text-dim);
+}
+
+.status-queued .status-text { color: var(--th-text-dim); }
+
+/* -- Job ID -- */
+.job-id-text {
+  font-family: var(--th-font-mono);
+  font-size: 11px;
+  color: var(--th-text-dim);
+}
+
+/* -- Printer column -- */
+.td-printer {
+  font-size: 12px;
+  color: var(--th-text);
+}
+
+/* -- Label column -- */
+.td-label {
+  color: var(--th-text);
+}
+
+/* -- Chunk progress bar -- */
+.chunk-bar {
+  position: relative;
+  width: 64px;
+  height: 16px;
+  background: var(--th-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.chunk-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--th-amber-dim), var(--th-amber));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.chunk-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.no-chunks {
+  color: var(--th-text-muted);
+}
+
+/* -- Time column -- */
+.td-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--th-text-dim);
+  font-size: 11px;
+}
+
+/* ============================================================
+   VIRTUAL PRINTER DOT
+   ============================================================ */
+
+.virtual-dot {
+  background: var(--th-amber) !important;
+  box-shadow: 0 0 6px rgba(196, 122, 24, 0.3) !important;
+}
+
+/* ============================================================
+   TEST JOB PANEL
+   ============================================================ */
+
+.test-section {
+  margin-bottom: 36px;
+}
+
+.label-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--th-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  color: var(--th-amber);
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.label-toggle:hover {
+  color: var(--th-text);
+}
+
+.test-panel {
+  border: 1px solid var(--th-border);
+  border-radius: 8px;
+  background: var(--th-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  padding: 20px;
+  animation: panel-in 0.3s ease both;
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.test-panel-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.test-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--th-text-muted);
+  margin-top: 4px;
+}
+
+.test-select {
+  font-family: var(--th-font-mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: var(--th-surface-raised);
+  color: var(--th-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.test-select:focus {
+  border-color: var(--th-amber);
+}
+
+.test-textarea {
+  font-family: var(--th-font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 12px;
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: var(--th-surface-raised);
+  color: var(--th-text);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.test-textarea:focus {
+  border-color: var(--th-amber);
+}
+
+.test-submit {
+  font-family: var(--th-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  padding: 10px 20px;
+  margin-top: 8px;
+  border: 1px solid var(--th-amber);
+  border-radius: 6px;
+  background: var(--th-amber);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.test-submit:hover {
+  opacity: 0.9;
+}
+
+.test-submit:active {
+  transform: scale(0.98);
+}
+
+/* -- Preview column in test panel -- */
+.test-preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-frame {
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 200px;
+}
+
+.preview-frame img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+}
+
+.preview-meta {
+  font-size: 10px;
+  color: var(--th-text-muted);
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+/* ============================================================
+   PREVIEW BUTTON IN TABLE
+   ============================================================ */
+
+.preview-btn {
+  font-family: var(--th-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  padding: 3px 10px;
+  border: 1px solid var(--th-border-bright);
+  border-radius: 4px;
+  background: var(--th-surface-raised);
+  color: var(--th-amber);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preview-btn:hover {
+  border-color: var(--th-amber);
+  background: var(--th-amber);
+  color: #fff;
+}
+
+/* ============================================================
+   PREVIEW MODAL
+   ============================================================ */
+
+.preview-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: backdrop-in 0.2s ease both;
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.preview-modal {
+  background: var(--th-surface);
+  border: 1px solid var(--th-border);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  max-width: 500px;
+  width: 90%;
+  animation: modal-in 0.25s ease both;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.preview-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--th-border);
+}
+
+.preview-modal-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: var(--th-text-dim);
+}
+
+.preview-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--th-text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.preview-modal-close:hover {
+  color: var(--th-text);
+}
+
+.preview-modal-body {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.preview-modal-body img {
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+}
+
+.preview-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--th-border);
+  font-size: 10px;
+  color: var(--th-text-muted);
+  letter-spacing: 1px;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.thermal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px 0;
+  border-top: 1px solid var(--th-border);
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--th-text-muted);
+}
+
+.footer-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--th-border-bright);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 640px) {
+  .thermal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .header-stat {
+    align-items: flex-start;
+  }
+
+  .printer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .jobs-table-wrap {
+    margin: 0 -24px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .jobs-table th,
+  .jobs-table td {
+    padding: 8px 12px;
+  }
+
+  .th-label, .td-label {
+    display: none;
+  }
+
+  .test-panel-inner {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   ANIMATIONS — entry
+   ============================================================ */
+
+.printer-card {
+  animation: card-in 0.4s ease both;
+}
+
+.printer-card:nth-child(1) { animation-delay: 0.05s; }
+.printer-card:nth-child(2) { animation-delay: 0.1s; }
+.printer-card:nth-child(3) { animation-delay: 0.15s; }
+.printer-card:nth-child(4) { animation-delay: 0.2s; }
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.thermal-header {
+  animation: fade-down 0.5s ease both;
+}
+
+@keyframes fade-down {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.jobs-section {
+  animation: fade-in 0.6s ease 0.2s both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
