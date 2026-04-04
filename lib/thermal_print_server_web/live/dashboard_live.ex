@@ -212,7 +212,13 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 stroke-width="1.3"
                 stroke-linecap="round"
               />
-              <path d="M11.5 0.5v2h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+              <path
+                d="M11.5 0.5v2h2"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
             </svg>
           </button>
           <span class="label-line"></span>
@@ -290,8 +296,15 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
               <label class="test-label">CONTENT TYPE</label>
               <select class="test-select" name="content_type">
-                <option value="application/vnd.zebra.zpl" selected={@test_content_type == "application/vnd.zebra.zpl"}>ZPL</option>
-                <option value="application/pdf" selected={@test_content_type == "application/pdf"}>PDF</option>
+                <option
+                  value="application/vnd.zebra.zpl"
+                  selected={@test_content_type == "application/vnd.zebra.zpl"}
+                >
+                  ZPL
+                </option>
+                <option value="application/pdf" selected={@test_content_type == "application/pdf"}>
+                  PDF
+                </option>
               </select>
 
               <label class="test-label">DATA</label>

@@ -68,7 +68,6 @@ config :phoenix, :plug_init_mode, :runtime
 # Dev printers are discovered from CUPS automatically via CUPS_URI env var.
 # No static printer config needed — see docker-compose.yml.
 
-
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.
   # Changing this configuration will require mix clean and a full recompile.

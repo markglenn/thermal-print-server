@@ -9,19 +9,26 @@ defmodule ThermalPrintServer.Printer.RegistryTest do
   }
 
   setup do
-    # Save original config and set test printers
-    original = Application.get_env(:thermal_print_server, :printers)
+    # Save original config
+    original_printers = Application.get_env(:thermal_print_server, :printers)
+    original_cups = Application.get_env(:thermal_print_server, :cups_uri)
+
+    # Set test config — disable CUPS discovery
     Application.put_env(:thermal_print_server, :printers, @test_printers)
+    Application.delete_env(:thermal_print_server, :cups_uri)
 
-    # Restart the registry so it picks up the new config
-    pid = GenServer.whereis(Registry)
-    if pid, do: GenServer.stop(pid)
-
-    # Wait for supervisor to restart it
-    Process.sleep(50)
+    # Refresh the registry with new config
+    Registry.refresh()
+    Process.sleep(20)
 
     on_exit(fn ->
-      Application.put_env(:thermal_print_server, :printers, original)
+      Application.put_env(:thermal_print_server, :printers, original_printers)
+
+      if original_cups,
+        do: Application.put_env(:thermal_print_server, :cups_uri, original_cups),
+        else: Application.delete_env(:thermal_print_server, :cups_uri)
+
+      Registry.refresh()
     end)
 
     :ok
@@ -42,5 +49,17 @@ defmodule ThermalPrintServer.Printer.RegistryTest do
     assert length(printers) == 2
     names = Enum.map(printers, & &1.name) |> Enum.sort()
     assert names == ["shipping-station", "warehouse-dock3"]
+  end
+
+  test "refresh reloads printers from config" do
+    Application.put_env(:thermal_print_server, :printers, %{
+      "new-printer" => %{uri: "ipp://10.0.1.99:631/ipp/print"}
+    })
+
+    Registry.refresh()
+    Process.sleep(50)
+
+    assert {:ok, _} = Registry.lookup("new-printer")
+    assert {:error, :not_found} = Registry.lookup("warehouse-dock3")
   end
 end
