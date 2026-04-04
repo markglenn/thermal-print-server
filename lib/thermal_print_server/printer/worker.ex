@@ -1,30 +1,24 @@
 defmodule ThermalPrintServer.Printer.Worker do
   @moduledoc """
-  Sends ZPL to printers. Supports both real IPP printers (via Hippy)
-  and virtual printers (rendered via Labelary for testing).
+  Sends print data to printers via IPP (Hippy).
+  Supports both ZPL and PDF content types.
   """
 
   require Logger
 
-  alias ThermalPrintServer.Printer.Labelary
+  @spec print(map(), String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
+  def print(%{uri: uri}, data, content_type, copies) do
+    Logger.info("Sending #{content_type} print job to #{uri} (#{copies} copies)")
 
-  @spec print(map(), String.t(), pos_integer()) :: :ok | {:ok, binary()} | {:error, term()}
-  def print(%{uri: "virtual:" <> _} = printer, zpl, _copies) do
-    Logger.info("Virtual printer '#{printer.name}' — rendering via Labelary")
+    job_opts = [job_name: "Thermal", copies: copies]
 
-    case Labelary.render(zpl) do
-      {:ok, png_bytes} ->
-        {:ok, png_bytes}
+    job_opts =
+      case content_type do
+        "application/vnd.zebra.zpl" -> job_opts
+        mime -> Keyword.put(job_opts, :document_format, mime)
+      end
 
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  def print(%{uri: uri}, zpl, copies) do
-    Logger.info("Sending print job to #{uri} (#{copies} copies)")
-
-    Hippy.Operation.PrintJob.new(uri, zpl, job_name: "Thermal", copies: copies)
+    Hippy.Operation.PrintJob.new(uri, data, job_opts)
     |> Hippy.send_operation()
     |> case do
       {:ok, %Hippy.Response{request_id: request_id}} ->

@@ -1,10 +1,10 @@
 defmodule ThermalPrintServer.Jobs.TestJob do
   @moduledoc """
   Submits test print jobs directly, bypassing SQS and HMAC verification.
-  Used for development/testing with virtual printers.
+  Used for development/testing.
   """
 
-  alias ThermalPrintServer.Jobs.Store
+  alias ThermalPrintServer.Jobs.{Preview, Store}
   alias ThermalPrintServer.Printer.{Registry, Worker}
 
   @sample_zpl """
@@ -13,24 +13,24 @@ defmodule ThermalPrintServer.Jobs.TestJob do
   ^FO50,110^A0N,25,25^FDTest Label^FS
   ^FO50,150^A0N,20,20^FD#{DateTime.utc_now() |> Calendar.strftime("%Y-%m-%d %H:%M:%S UTC")}^FS
   ^FO50,200^BY3^BCN,80,Y,N,N^FD>:THERMAL001^FS
-  ^FO50,320^A0N,18,18^FDThis label was rendered via Labelary^FS
+  ^FO50,320^A0N,18,18^FDPrinted via CUPS^FS
   ^XZ
   """
 
   @spec sample_zpl() :: String.t()
   def sample_zpl, do: @sample_zpl
 
-  @spec submit(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  def submit(printer_name, zpl) do
+  @spec submit(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def submit(printer_name, data, content_type \\ "application/vnd.zebra.zpl") do
     job_id = generate_job_id()
 
     Store.record(job_id, %{
       printer: printer_name,
       label_name: "Test Label",
+      content_type: content_type,
       status: :printing,
       chunk_index: 0,
-      total_chunks: 1,
-      zpl: zpl
+      total_chunks: 1
     })
 
     broadcast(job_id, %{status: :printing, printer: printer_name})
@@ -38,19 +38,16 @@ defmodule ThermalPrintServer.Jobs.TestJob do
     Task.start(fn ->
       case Registry.lookup(printer_name) do
         {:ok, printer} ->
-          case Worker.print(printer, zpl, 1) do
-            {:ok, png_bytes} ->
-              attrs = %{
-                status: :completed,
-                preview_png: Base.encode64(png_bytes)
-              }
+          case Worker.print(printer, data, content_type, 1) do
+            :ok ->
+              preview = generate_preview(data, content_type)
+
+              attrs =
+                %{status: :completed}
+                |> maybe_merge(preview)
 
               Store.record(job_id, attrs)
               broadcast(job_id, attrs)
-
-            :ok ->
-              Store.record(job_id, %{status: :completed})
-              broadcast(job_id, %{status: :completed})
 
             {:error, reason} ->
               attrs = %{status: :failed, error: inspect(reason)}
@@ -67,6 +64,16 @@ defmodule ThermalPrintServer.Jobs.TestJob do
 
     {:ok, job_id}
   end
+
+  defp generate_preview(data, content_type) do
+    case Preview.generate(data, content_type) do
+      {:ok, preview} -> preview
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp maybe_merge(attrs, nil), do: attrs
+  defp maybe_merge(attrs, preview), do: Map.merge(attrs, preview)
 
   @spec generate_job_id() :: String.t()
   defp generate_job_id do

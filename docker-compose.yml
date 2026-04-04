@@ -1,15 +1,38 @@
 services:
-  thermal-print-server:
-    build: .
+  app:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - .:/workspace
+      - mix-deps:/workspace/deps
+      - mix-build:/workspace/_build
     ports:
       - "4000:4000"
     environment:
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
-      - PRINT_QUEUE_URL=${PRINT_QUEUE_URL}
-      - PRINT_SIGNING_SECRET=${PRINT_SIGNING_SECRET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - PRINTER_1_NAME=${PRINTER_1_NAME:-default}
-      - PRINTER_1_URI=${PRINTER_1_URI:-ipp://host.docker.internal:631/ipp/print}
-    restart: unless-stopped
+      - MIX_ENV=dev
+      - CUPS_URI=ipp://cups:631
+    depends_on:
+      cups:
+        condition: service_healthy
+    command: bash -c "mix deps.get && mix compile && mix assets.setup && mix assets.build && mix phx.server"
+    stdin_open: true
+    tty: true
+
+  cups:
+    build:
+      context: docker/cups
+    ports:
+      - "631:631"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:631/"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - cups-data:/etc/cups
+
+volumes:
+  mix-deps:
+  mix-build:
+  cups-data:

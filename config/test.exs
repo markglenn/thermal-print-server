@@ -7,12 +7,10 @@ config :thermal_print_server, ThermalPrintServerWeb.Endpoint,
   secret_key_base: "C8gbt92xQaw8unG7L2ngzOQkg2lv+ie/whdvDnWyUN86QFDkx9+t6zIrjrJ3L0vq",
   server: false
 
-# Test printer and signing config
+# Test printer config
 config :thermal_print_server, :printers, %{
   "test-printer" => %{uri: "ipp://localhost:631/ipp/print"}
 }
-
-config :thermal_print_server, :signing_secret, "test-signing-secret"
 
 # Print only warnings and errors during test
 config :logger, level: :warning

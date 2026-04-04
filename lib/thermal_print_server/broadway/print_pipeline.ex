@@ -1,7 +1,7 @@
 defmodule ThermalPrintServer.Broadway.PrintPipeline do
   @moduledoc """
-  Broadway pipeline that consumes print jobs from SQS,
-  verifies signatures, and sends ZPL to printers via IPP.
+  Broadway pipeline that consumes print jobs from SQS
+  and sends data to printers via IPP.
   """
 
   use Broadway
@@ -9,7 +9,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   require Logger
 
   alias ThermalPrintServer.Broadway.MessageParser
-  alias ThermalPrintServer.Jobs.{Store, Verifier}
+  alias ThermalPrintServer.Jobs.{Preview, Store}
   alias ThermalPrintServer.Printer.{Registry, Worker}
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
@@ -32,10 +32,10 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   @impl true
   def handle_message(_processor, message, _context) do
     with {:ok, parsed} <- MessageParser.parse(message.data),
-         :ok <- verify_signature(parsed),
          {:ok, printer} <- resolve_printer(parsed),
-         {:ok, preview_png} <- send_to_printer(printer, parsed) do
-      track_success(parsed, preview_png)
+         :ok <- send_to_printer(printer, parsed) do
+      preview = generate_preview(parsed)
+      track_success(parsed, preview)
       message
     else
       {:error, reason} ->
@@ -53,15 +53,6 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
     messages
   end
 
-  @spec verify_signature(MessageParser.parsed()) :: :ok | {:error, String.t()}
-  defp verify_signature(parsed) do
-    if Verifier.verify(parsed.job_id, parsed.chunk_index, parsed.zpl, parsed.signature) do
-      :ok
-    else
-      {:error, "invalid signature"}
-    end
-  end
-
   @spec resolve_printer(MessageParser.parsed()) :: {:ok, map()} | {:error, String.t()}
   defp resolve_printer(parsed) do
     case Registry.lookup(parsed.printer) do
@@ -70,25 +61,29 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
     end
   end
 
-  @spec send_to_printer(map(), MessageParser.parsed()) :: {:ok, binary() | nil} | {:error, term()}
   defp send_to_printer(printer, parsed) do
-    case Worker.print(printer, parsed.zpl, parsed.copies) do
-      :ok -> {:ok, nil}
-      {:ok, png_bytes} -> {:ok, png_bytes}
-      {:error, reason} -> {:error, reason}
+    Worker.print(printer, parsed.data, parsed.content_type, parsed.copies)
+  end
+
+  defp generate_preview(parsed) do
+    case Preview.generate(parsed.data, parsed.content_type) do
+      {:ok, preview} -> preview
+      {:error, _reason} -> nil
     end
   end
 
-  @spec track_success(MessageParser.parsed(), binary() | nil) :: :ok | {:error, term()}
-  defp track_success(parsed, preview_png) do
-    attrs = %{
-      printer: parsed.printer,
-      label_name: parsed.metadata.label_name,
-      status: :completed,
-      chunk_index: parsed.chunk_index,
-      total_chunks: parsed.total_chunks,
-      preview_png: preview_png
-    }
+  @spec track_success(MessageParser.parsed(), map() | nil) :: :ok | {:error, term()}
+  defp track_success(parsed, preview) do
+    attrs =
+      %{
+        printer: parsed.printer,
+        label_name: parsed.metadata.label_name,
+        content_type: parsed.content_type,
+        status: :completed,
+        chunk_index: parsed.chunk_index,
+        total_chunks: parsed.total_chunks
+      }
+      |> maybe_merge(preview)
 
     Store.record(parsed.job_id, attrs)
 
@@ -98,6 +93,9 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
       {:job_updated, parsed.job_id, attrs}
     )
   end
+
+  defp maybe_merge(attrs, nil), do: attrs
+  defp maybe_merge(attrs, preview), do: Map.merge(attrs, preview)
 
   @spec track_failure(String.t(), term()) :: :ok | {:error, term()}
   defp track_failure(raw_data, reason) do

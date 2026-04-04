@@ -1,0 +1,15 @@
+services:
+  thermal-print-server:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      - PRINT_QUEUE_URL=${PRINT_QUEUE_URL}
+      - CUPS_URI=${CUPS_URI}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - PRINTER_1_NAME=${PRINTER_1_NAME:-default}
+      - PRINTER_1_URI=${PRINTER_1_URI:-ipp://host.docker.internal:631/ipp/print}
+    restart: unless-stopped

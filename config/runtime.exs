@@ -27,8 +27,8 @@ if queue_url = System.get_env("PRINT_QUEUE_URL") do
     aws_region: System.get_env("AWS_REGION", "us-east-1")
 end
 
-if signing_secret = System.get_env("PRINT_SIGNING_SECRET") do
-  config :thermal_print_server, :signing_secret, signing_secret
+if cups_uri = System.get_env("CUPS_URI") do
+  config :thermal_print_server, :cups_uri, cups_uri
 end
 
 # Build printer map from PRINTER_*_NAME / PRINTER_*_URI env vars

@@ -8,6 +8,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(ThermalPrintServer.PubSub, "print_jobs")
+      Phoenix.PubSub.subscribe(ThermalPrintServer.PubSub, "printers")
       :timer.send_interval(1000, self(), :tick)
     end
 
@@ -22,9 +23,11 @@ defmodule ThermalPrintServerWeb.DashboardLive do
        now: DateTime.utc_now(),
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
        total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
-       test_zpl: TestJob.sample_zpl(),
+       test_data: TestJob.sample_zpl(),
+       test_content_type: "application/vnd.zebra.zpl",
        test_printer: List.first(printers)[:name] || "",
        preview_job: nil,
+       selected_printer: nil,
        show_test_form: false
      )}
   end
@@ -34,13 +37,17 @@ defmodule ThermalPrintServerWeb.DashboardLive do
     {:noreply, assign(socket, now: DateTime.utc_now())}
   end
 
+  def handle_info({:printers_updated, printers}, socket) do
+    {:noreply, assign(socket, printers: printers)}
+  end
+
   def handle_info({:job_updated, _job_id, _attrs}, socket) do
     jobs = Store.recent(100)
 
     # Auto-show preview for the latest completed job with a preview
     preview_job =
       Enum.find(jobs, socket.assigns.preview_job, fn job ->
-        job[:status] == :completed and job[:preview_png] != nil
+        job[:status] == :completed and job[:preview_data] != nil
       end)
 
     {:noreply,
@@ -53,28 +60,48 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   end
 
   @impl true
+  def handle_event("refresh_printers", _params, socket) do
+    case Registry.refresh_sync() do
+      {:ok, count} ->
+        {:noreply, put_flash(socket, :info, "Refreshed — #{count} printer(s) found")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "CUPS unreachable")}
+    end
+  end
+
   def handle_event("toggle_test_form", _params, socket) do
     {:noreply, assign(socket, show_test_form: !socket.assigns.show_test_form)}
   end
 
-  def handle_event("update_form", %{"zpl" => zpl, "printer" => printer}, socket) do
-    {:noreply, assign(socket, test_zpl: zpl, test_printer: printer)}
-  end
+  def handle_event("update_form", params, socket) do
+    assigns =
+      Enum.reduce(params, [], fn
+        {"data", val}, acc -> [{:test_data, val} | acc]
+        {"printer", val}, acc -> [{:test_printer, val} | acc]
+        {"content_type", val}, acc -> [{:test_content_type, val} | acc]
+        _, acc -> acc
+      end)
 
-  def handle_event("update_form", %{"printer" => printer}, socket) do
-    {:noreply, assign(socket, test_printer: printer)}
-  end
-
-  def handle_event("update_form", %{"zpl" => zpl}, socket) do
-    {:noreply, assign(socket, test_zpl: zpl)}
+    {:noreply, assign(socket, assigns)}
   end
 
   def handle_event("submit_test_job", _params, socket) do
-    zpl = socket.assigns.test_zpl
+    data = socket.assigns.test_data
     printer = socket.assigns.test_printer
+    content_type = socket.assigns.test_content_type
 
-    {:ok, _job_id} = TestJob.submit(printer, zpl)
+    {:ok, _job_id} = TestJob.submit(printer, data, content_type)
     {:noreply, socket}
+  end
+
+  def handle_event("show_printer", %{"name" => name}, socket) do
+    printer = Enum.find(socket.assigns.printers, &(&1.name == name))
+    {:noreply, assign(socket, selected_printer: printer)}
+  end
+
+  def handle_event("close_printer", _params, socket) do
+    {:noreply, assign(socket, selected_printer: nil)}
   end
 
   def handle_event("show_preview", %{"job-id" => job_id}, socket) do
@@ -91,6 +118,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
     ~H"""
     <div class="thermal-dashboard">
       <div class="scanlines"></div>
+      <Layouts.flash_group flash={@flash} />
 
       <%!-- Header --%>
       <header class="thermal-header">
@@ -176,30 +204,35 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         <div class="section-label">
           <span class="label-line"></span>
           <span class="label-text">DEVICES</span>
+          <button class="refresh-btn" phx-click="refresh_printers" title="Refresh printers">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M11.5 2.5A5.5 5.5 0 1 0 13 7"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linecap="round"
+              />
+              <path d="M11.5 0.5v2h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
           <span class="label-line"></span>
         </div>
 
         <div class="printer-grid">
-          <div :for={printer <- @printers} class="printer-card">
+          <div
+            :for={printer <- @printers}
+            class="printer-card printer-card-clickable"
+            phx-click="show_printer"
+            phx-value-name={printer.name}
+          >
             <div class="printer-card-inner">
-              <div class={"printer-status-dot #{if String.starts_with?(printer.uri, "virtual:"), do: "virtual-dot"}"}>
-              </div>
+              <div class="printer-status-dot"></div>
               <div class="printer-info">
                 <div class="printer-name">{String.upcase(printer.name)}</div>
-                <div class="printer-uri">
-                  {if String.starts_with?(printer.uri, "virtual:"),
-                    do: "Labelary virtual printer",
-                    else: printer.uri}
-                </div>
+                <div class="printer-uri">{printer.uri}</div>
               </div>
               <div class="printer-icon">
-                <svg
-                  :if={!String.starts_with?(printer.uri, "virtual:")}
-                  width="32"
-                  height="32"
-                  viewBox="0 0 32 32"
-                  fill="none"
-                >
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
                   <rect
                     x="4"
                     y="12"
@@ -220,35 +253,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                     stroke-width="1.2"
                   />
                   <circle cx="22" cy="16" r="1.5" fill="currentColor" opacity="0.4" />
-                </svg>
-                <svg
-                  :if={String.starts_with?(printer.uri, "virtual:")}
-                  width="32"
-                  height="32"
-                  viewBox="0 0 32 32"
-                  fill="none"
-                >
-                  <rect
-                    x="6"
-                    y="4"
-                    width="20"
-                    height="24"
-                    rx="2"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                  />
-                  <circle cx="16" cy="14" r="5" stroke="currentColor" stroke-width="1.2" />
-                  <line x1="16" y1="11" x2="16" y2="17" stroke="currentColor" stroke-width="1" />
-                  <line x1="13" y1="14" x2="19" y2="14" stroke="currentColor" stroke-width="1" />
-                  <line
-                    x1="10"
-                    y1="24"
-                    x2="22"
-                    y2="24"
-                    stroke="currentColor"
-                    stroke-width="0.8"
-                    opacity="0.3"
-                  />
                 </svg>
               </div>
             </div>
@@ -284,24 +288,39 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 </option>
               </select>
 
-              <label class="test-label">ZPL</label>
+              <label class="test-label">CONTENT TYPE</label>
+              <select class="test-select" name="content_type">
+                <option value="application/vnd.zebra.zpl" selected={@test_content_type == "application/vnd.zebra.zpl"}>ZPL</option>
+                <option value="application/pdf" selected={@test_content_type == "application/pdf"}>PDF</option>
+              </select>
+
+              <label class="test-label">DATA</label>
               <textarea
                 class="test-textarea"
-                name="zpl"
+                name="data"
                 spellcheck="false"
                 rows="12"
                 phx-debounce="300"
-              >{@test_zpl}</textarea>
+              >{@test_data}</textarea>
 
               <button type="submit" class="test-submit">
                 SEND TO PRINTER
               </button>
             </form>
 
-            <div :if={@preview_job && @preview_job[:preview_png]} class="test-preview-col">
+            <div :if={@preview_job && @preview_job[:preview_data]} class="test-preview-col">
               <label class="test-label">LABEL PREVIEW</label>
               <div class="preview-frame">
-                <img src={"data:image/png;base64,#{@preview_job[:preview_png]}"} alt="Label preview" />
+                <img
+                  :if={@preview_job[:preview_content_type] == "image/png"}
+                  src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
+                  alt="Label preview"
+                />
+                <iframe
+                  :if={@preview_job[:preview_content_type] == "application/pdf"}
+                  src={"data:application/pdf;base64,#{@preview_job[:preview_data]}"}
+                  class="preview-pdf"
+                />
               </div>
               <span class="preview-meta">
                 {@preview_job[:printer] || "—"} — {format_time(@preview_job[:timestamp])}
@@ -405,7 +424,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 <td class="td-time">{format_time(job.timestamp)}</td>
                 <td class="td-preview">
                   <button
-                    :if={job[:preview_png]}
+                    :if={job[:preview_data]}
                     class="preview-btn"
                     phx-click="show_preview"
                     phx-value-job-id={job.job_id}
@@ -421,7 +440,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
       <%!-- Label Preview Modal --%>
       <div
-        :if={@preview_job && @preview_job[:preview_png] && !@show_test_form}
+        :if={@preview_job && @preview_job[:preview_data] && !@show_test_form}
         class="preview-modal-backdrop"
         phx-click="close_preview"
       >
@@ -436,12 +455,78 @@ defmodule ThermalPrintServerWeb.DashboardLive do
             </button>
           </div>
           <div class="preview-modal-body">
-            <img src={"data:image/png;base64,#{@preview_job[:preview_png]}"} alt="Label preview" />
+            <img
+              :if={@preview_job[:preview_content_type] == "image/png"}
+              src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
+              alt="Label preview"
+            />
+            <iframe
+              :if={@preview_job[:preview_content_type] == "application/pdf"}
+              src={"data:application/pdf;base64,#{@preview_job[:preview_data]}"}
+              class="preview-pdf-modal"
+            />
           </div>
           <div class="preview-modal-footer">
             <span>{@preview_job[:printer] || "—"}</span>
             <span>{truncate_id(@preview_job.job_id)}</span>
             <span>{format_time(@preview_job[:timestamp])}</span>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Printer Info Modal --%>
+      <div
+        :if={@selected_printer}
+        class="preview-modal-backdrop"
+        phx-click="close_printer"
+      >
+        <div class="preview-modal printer-modal" phx-click-away="close_printer">
+          <div class="preview-modal-header">
+            <span class="preview-modal-title">{String.upcase(@selected_printer.name)}</span>
+            <button class="preview-modal-close" phx-click="close_printer">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.5" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </button>
+          </div>
+          <div class="printer-modal-body">
+            <dl class="printer-detail-list">
+              <dt>URI</dt>
+              <dd class="printer-detail-mono">{@selected_printer.uri}</dd>
+
+              <dt>STATE</dt>
+              <dd>{printer_state_label(@selected_printer[:state])}</dd>
+
+              <dt :if={@selected_printer[:info]}>DESCRIPTION</dt>
+              <dd :if={@selected_printer[:info]}>{@selected_printer[:info]}</dd>
+
+              <dt :if={@selected_printer[:location]}>LOCATION</dt>
+              <dd :if={@selected_printer[:location]}>{@selected_printer[:location]}</dd>
+
+              <dt :if={@selected_printer[:resolution_default]}>RESOLUTION</dt>
+              <dd :if={@selected_printer[:resolution_default]}>
+                {format_resolution(@selected_printer[:resolution_default])}
+              </dd>
+
+              <dt :if={@selected_printer[:resolution]}>SUPPORTED RESOLUTIONS</dt>
+              <dd :if={@selected_printer[:resolution]}>
+                {format_resolutions(@selected_printer[:resolution])}
+              </dd>
+
+              <dt :if={@selected_printer[:media_default]}>DEFAULT MEDIA</dt>
+              <dd :if={@selected_printer[:media_default]}>{@selected_printer[:media_default]}</dd>
+
+              <dt :if={@selected_printer[:media_ready]}>LOADED MEDIA</dt>
+              <dd :if={@selected_printer[:media_ready]}>
+                {format_media_list(@selected_printer[:media_ready])}
+              </dd>
+
+              <dt :if={@selected_printer[:media_supported]}>SUPPORTED MEDIA</dt>
+              <dd :if={@selected_printer[:media_supported]}>
+                {format_media_list(@selected_printer[:media_supported])}
+              </dd>
+            </dl>
           </div>
         </div>
       </div>
@@ -512,4 +597,26 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   end
 
   defp format_time(_), do: "—"
+
+  defp printer_state_label(3), do: "Idle"
+  defp printer_state_label(4), do: "Processing"
+  defp printer_state_label(5), do: "Stopped"
+  defp printer_state_label(_), do: "Unknown"
+
+  defp format_resolution(%{x: x, y: y, unit: unit}) do
+    unit_str = if unit == :dpi, do: "dpi", else: "dpcm"
+    if x == y, do: "#{x} #{unit_str}", else: "#{x}x#{y} #{unit_str}"
+  end
+
+  defp format_resolution(_), do: "—"
+
+  defp format_resolutions(resolutions) when is_list(resolutions) do
+    resolutions |> Enum.map(&format_resolution/1) |> Enum.join(", ")
+  end
+
+  defp format_resolutions(res), do: format_resolution(res)
+
+  defp format_media_list(media) when is_list(media), do: Enum.join(media, ", ")
+  defp format_media_list(media) when is_binary(media), do: media
+  defp format_media_list(_), do: "—"
 end

@@ -9,7 +9,7 @@ import Config
 config :thermal_print_server, ThermalPrintServerWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -65,14 +65,9 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-# Dev printer config (no SQS in dev by default)
-# Virtual printers render ZPL via Labelary API instead of sending to a real printer
-config :thermal_print_server, :printers, %{
-  "virtual-4x6" => %{uri: "virtual:labelary", dpmm: "8dpmm", size: "4x6"},
-  "virtual-4x2" => %{uri: "virtual:labelary", dpmm: "8dpmm", size: "4x2"}
-}
+# Dev printers are discovered from CUPS automatically via CUPS_URI env var.
+# No static printer config needed — see docker-compose.yml.
 
-config :thermal_print_server, :signing_secret, "dev-signing-secret"
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.

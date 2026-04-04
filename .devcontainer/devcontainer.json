@@ -1,0 +1,24 @@
+{
+  "name": "Thermal Print Server",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls",
+        "phoenixframework.phoenix",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "elixirLS.dialyzerEnabled": false
+      }
+    }
+  },
+  "postCreateCommand": "mix setup",
+  "forwardPorts": [4000, 631],
+  "portsAttributes": {
+    "4000": { "label": "Phoenix", "onAutoForward": "notify" },
+    "631": { "label": "CUPS Admin", "onAutoForward": "silent" }
+  }
+}
