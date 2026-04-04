@@ -76,6 +76,18 @@ defmodule ThermalPrintServer.Broadway.MessageParserTest do
       assert parsed.content_type == "application/vnd.zebra.zpl"
     end
 
+    test "accepts s3Key instead of inline data" do
+      json =
+        @valid_message
+        |> Map.delete("data")
+        |> Map.put("s3Key", "print-jobs/abc-123.zpl.gz")
+        |> Jason.encode!()
+
+      assert {:ok, parsed} = MessageParser.parse(json)
+      assert parsed.s3_key == "print-jobs/abc-123.zpl.gz"
+      assert parsed.data == nil
+    end
+
     test "prefers data over legacy zpl when both present" do
       json =
         @valid_message
@@ -102,13 +114,13 @@ defmodule ThermalPrintServer.Broadway.MessageParserTest do
       assert {:error, "missing required fields: " <> _} = MessageParser.parse(json)
     end
 
-    test "rejects missing data and zpl fields" do
+    test "rejects missing data, s3Key, and zpl fields" do
       json =
         @valid_message
         |> Map.delete("data")
         |> Jason.encode!()
 
-      assert {:error, "missing required field: data"} = MessageParser.parse(json)
+      assert {:error, "missing required field: data or s3Key"} = MessageParser.parse(json)
     end
 
     test "rejects invalid content type" do

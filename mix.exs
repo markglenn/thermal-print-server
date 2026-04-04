@@ -65,6 +65,7 @@ defmodule ThermalPrintServer.MixProject do
       {:broadway_sqs, "~> 0.7"},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_sqs, "~> 3.4"},
+      {:ex_aws_s3, "~> 2.5"},
       {:saxy, "~> 1.5"},
 
       # Printer communication

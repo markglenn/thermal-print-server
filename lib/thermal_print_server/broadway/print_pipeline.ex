@@ -9,7 +9,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   require Logger
 
   alias ThermalPrintServer.Broadway.MessageParser
-  alias ThermalPrintServer.Jobs.{Preview, Store}
+  alias ThermalPrintServer.Jobs.{Preview, S3Fetcher, Store}
   alias ThermalPrintServer.Printer.{Registry, Worker}
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
@@ -32,6 +32,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   @impl true
   def handle_message(_processor, message, _context) do
     with {:ok, parsed} <- MessageParser.parse(message.data),
+         {:ok, parsed} <- resolve_data(parsed),
          {:ok, printer} <- resolve_printer(parsed),
          :ok <- send_to_printer(printer, parsed) do
       preview = generate_preview(parsed)
@@ -52,6 +53,18 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
     messages
   end
+
+  # Fetch data from S3 if the message has an s3_key instead of inline data
+  defp resolve_data(%{s3_key: nil} = parsed), do: {:ok, parsed}
+
+  defp resolve_data(%{s3_key: s3_key} = parsed) when is_binary(s3_key) do
+    case S3Fetcher.fetch(s3_key) do
+      {:ok, data} -> {:ok, %{parsed | data: data, s3_key: nil}}
+      {:error, reason} -> {:error, "S3 fetch failed: #{inspect(reason)}"}
+    end
+  end
+
+  defp resolve_data(parsed), do: {:ok, parsed}
 
   @spec resolve_printer(MessageParser.parsed()) :: {:ok, map()} | {:error, String.t()}
   defp resolve_printer(parsed) do

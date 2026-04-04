@@ -31,6 +31,10 @@ if cups_uri = System.get_env("CUPS_URI") do
   config :thermal_print_server, :cups_uri, cups_uri
 end
 
+if print_bucket = System.get_env("PRINT_BUCKET") do
+  config :thermal_print_server, :print_bucket, print_bucket
+end
+
 # Build printer map from PRINTER_*_NAME / PRINTER_*_URI env vars
 printers =
   System.get_env()

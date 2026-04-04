@@ -11,7 +11,8 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
           chunk_index: non_neg_integer(),
           total_chunks: pos_integer(),
           printer: String.t(),
-          data: String.t(),
+          data: String.t() | nil,
+          s3_key: String.t() | nil,
           content_type: String.t(),
           copies: pos_integer(),
           metadata: %{
@@ -50,12 +51,13 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
     end
   end
 
-  # Must have either "data" or legacy "zpl" field
+  # Must have "data", "s3Key", or legacy "zpl" field
   defp validate_data_field(map) do
     cond do
       Map.has_key?(map, "data") and is_binary(map["data"]) -> :ok
+      Map.has_key?(map, "s3Key") and is_binary(map["s3Key"]) -> :ok
       Map.has_key?(map, "zpl") and is_binary(map["zpl"]) -> :ok
-      true -> {:error, "missing required field: data"}
+      true -> {:error, "missing required field: data or s3Key"}
     end
   end
 
@@ -99,6 +101,7 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
       total_chunks: map["totalChunks"],
       printer: map["printer"],
       data: data,
+      s3_key: map["s3Key"],
       content_type: content_type,
       copies: map["copies"] || 1,
       metadata: %{
