@@ -25,10 +25,15 @@ defmodule ThermalPrintServerWeb.DashboardLive do
        total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
        test_data: TestJob.sample_zpl(),
        test_content_type: "application/vnd.zebra.zpl",
+       test_label_size: "4x6",
+       test_dpmm: "8dpmm",
        test_printer: List.first(printers)[:name] || "",
        preview_job: nil,
        selected_printer: nil,
-       show_test_form: false
+       printer_jobs: [],
+       show_test_form: false,
+       show_printers_panel: false,
+       printer_search: ""
      )}
   end
 
@@ -70,6 +75,14 @@ defmodule ThermalPrintServerWeb.DashboardLive do
     end
   end
 
+  def handle_event("toggle_printers_panel", _params, socket) do
+    {:noreply, assign(socket, show_printers_panel: !socket.assigns.show_printers_panel)}
+  end
+
+  def handle_event("search_printers", %{"search" => search}, socket) do
+    {:noreply, assign(socket, printer_search: search)}
+  end
+
   def handle_event("toggle_test_form", _params, socket) do
     {:noreply, assign(socket, show_test_form: !socket.assigns.show_test_form)}
   end
@@ -80,6 +93,8 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         {"data", val}, acc -> [{:test_data, val} | acc]
         {"printer", val}, acc -> [{:test_printer, val} | acc]
         {"content_type", val}, acc -> [{:test_content_type, val} | acc]
+        {"label_size", val}, acc -> [{:test_label_size, val} | acc]
+        {"dpmm", val}, acc -> [{:test_dpmm, val} | acc]
         _, acc -> acc
       end)
 
@@ -91,17 +106,32 @@ defmodule ThermalPrintServerWeb.DashboardLive do
     printer = socket.assigns.test_printer
     content_type = socket.assigns.test_content_type
 
-    {:ok, _job_id} = TestJob.submit(printer, data, content_type)
+    opts = [
+      label_size: socket.assigns.test_label_size,
+      dpmm: socket.assigns.test_dpmm
+    ]
+
+    {:ok, _job_id} = TestJob.submit(printer, data, content_type, opts)
     {:noreply, socket}
   end
 
   def handle_event("show_printer", %{"name" => name}, socket) do
     printer = Enum.find(socket.assigns.printers, &(&1.name == name))
-    {:noreply, assign(socket, selected_printer: printer)}
+
+    printer_jobs =
+      Store.recent(100)
+      |> Enum.filter(&(&1[:printer] == name))
+
+    {:noreply, assign(socket, selected_printer: printer, printer_jobs: printer_jobs)}
   end
 
   def handle_event("close_printer", _params, socket) do
     {:noreply, assign(socket, selected_printer: nil)}
+  end
+
+  def handle_event("show_job_from_printer", %{"job-id" => job_id}, socket) do
+    job = Store.get(job_id)
+    {:noreply, assign(socket, selected_printer: nil, preview_job: job)}
   end
 
   def handle_event("show_preview", %{"job-id" => job_id}, socket) do
@@ -180,6 +210,24 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           </div>
         </div>
         <div class="header-right">
+          <button class="header-devices-btn" phx-click="toggle_printers_panel">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
+              <rect
+                x="4"
+                y="12"
+                width="24"
+                height="12"
+                rx="2"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <path d="M8 12V6h16v6" stroke="currentColor" stroke-width="2" />
+              <rect x="8" y="20" width="16" height="8" rx="1" stroke="currentColor" stroke-width="2" />
+            </svg>
+            <span class="header-devices-label">DEVICES</span>
+            <span class="header-devices-count">{length(@printers)}</span>
+          </button>
+          <div class="header-divider"></div>
           <div class="header-stat">
             <span class="stat-label">PROCESSED</span>
             <span class="stat-value stat-good">{@total_completed}</span>
@@ -198,77 +246,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           </div>
         </div>
       </header>
-
-      <%!-- Devices --%>
-      <section class="printer-section">
-        <div class="section-label">
-          <span class="label-line"></span>
-          <span class="label-text">DEVICES</span>
-          <button class="refresh-btn" phx-click="refresh_printers" title="Refresh printers">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M11.5 2.5A5.5 5.5 0 1 0 13 7"
-                stroke="currentColor"
-                stroke-width="1.3"
-                stroke-linecap="round"
-              />
-              <path
-                d="M11.5 0.5v2h2"
-                stroke="currentColor"
-                stroke-width="1.3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <span class="label-line"></span>
-        </div>
-
-        <div class="printer-grid">
-          <div
-            :for={printer <- @printers}
-            class="printer-card printer-card-clickable"
-            phx-click="show_printer"
-            phx-value-name={printer.name}
-          >
-            <div class="printer-card-inner">
-              <div class="printer-status-dot"></div>
-              <div class="printer-info">
-                <div class="printer-name">{String.upcase(printer.name)}</div>
-                <div class="printer-uri">{printer.uri}</div>
-              </div>
-              <div class="printer-icon">
-                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                  <rect
-                    x="4"
-                    y="12"
-                    width="24"
-                    height="12"
-                    rx="2"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                  />
-                  <path d="M8 12V6h16v6" stroke="currentColor" stroke-width="1.2" />
-                  <rect
-                    x="8"
-                    y="20"
-                    width="16"
-                    height="8"
-                    rx="1"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                  />
-                  <circle cx="22" cy="16" r="1.5" fill="currentColor" opacity="0.4" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div :if={@printers == []} class="no-printers">
-            <span class="no-printers-text">NO DEVICES REGISTERED</span>
-          </div>
-        </div>
-      </section>
 
       <%!-- Test Job Panel --%>
       <section class="test-section">
@@ -306,6 +283,27 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                   PDF
                 </option>
               </select>
+
+              <div class="test-row">
+                <div class="test-field">
+                  <label class="test-label">LABEL SIZE</label>
+                  <select class="test-select" name="label_size">
+                    <option value="4x6" selected={@test_label_size == "4x6"}>4x6</option>
+                    <option value="4x4" selected={@test_label_size == "4x4"}>4x4</option>
+                    <option value="4x2" selected={@test_label_size == "4x2"}>4x2</option>
+                    <option value="4x1" selected={@test_label_size == "4x1"}>4x1</option>
+                    <option value="2x1" selected={@test_label_size == "2x1"}>2x1</option>
+                  </select>
+                </div>
+                <div class="test-field">
+                  <label class="test-label">DPI</label>
+                  <select class="test-select" name="dpmm">
+                    <option value="8dpmm" selected={@test_dpmm == "8dpmm"}>203 dpi</option>
+                    <option value="12dpmm" selected={@test_dpmm == "12dpmm"}>300 dpi</option>
+                    <option value="24dpmm" selected={@test_dpmm == "24dpmm"}>600 dpi</option>
+                  </select>
+                </div>
+              </div>
 
               <label class="test-label">DATA</label>
               <textarea
@@ -451,15 +449,15 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         </div>
       </section>
 
-      <%!-- Label Preview Modal --%>
+      <%!-- Job Detail Modal --%>
       <div
-        :if={@preview_job && @preview_job[:preview_data] && !@show_test_form}
+        :if={@preview_job && !@show_test_form}
         class="preview-modal-backdrop"
         phx-click="close_preview"
       >
-        <div class="preview-modal" phx-click-away="close_preview">
+        <div class="preview-modal job-detail-modal" phx-click-away="close_preview">
           <div class="preview-modal-header">
-            <span class="preview-modal-title">LABEL PREVIEW</span>
+            <span class="preview-modal-title">JOB DETAILS</span>
             <button class="preview-modal-close" phx-click="close_preview">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.5" />
@@ -467,22 +465,52 @@ defmodule ThermalPrintServerWeb.DashboardLive do
               </svg>
             </button>
           </div>
-          <div class="preview-modal-body">
-            <img
-              :if={@preview_job[:preview_content_type] == "image/png"}
-              src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
-              alt="Label preview"
-            />
-            <iframe
-              :if={@preview_job[:preview_content_type] == "application/pdf"}
-              src={"data:application/pdf;base64,#{@preview_job[:preview_data]}"}
-              class="preview-pdf-modal"
-            />
-          </div>
-          <div class="preview-modal-footer">
-            <span>{@preview_job[:printer] || "—"}</span>
-            <span>{truncate_id(@preview_job.job_id)}</span>
-            <span>{format_time(@preview_job[:timestamp])}</span>
+          <div class="job-detail-body">
+            <dl class="printer-detail-list">
+              <dt>STATUS</dt>
+              <dd>
+                <div class={"status-indicator #{status_class(@preview_job[:status])}"}>
+                  <div class="status-dot"></div>
+                  <span class="status-text">{status_label(@preview_job[:status])}</span>
+                </div>
+              </dd>
+
+              <dt>JOB ID</dt>
+              <dd class="printer-detail-mono">{@preview_job.job_id}</dd>
+
+              <dt>DEVICE</dt>
+              <dd>{@preview_job[:printer] || "—"}</dd>
+
+              <dt :if={@preview_job[:label_name]}>LABEL</dt>
+              <dd :if={@preview_job[:label_name]}>{@preview_job[:label_name]}</dd>
+
+              <dt :if={@preview_job[:content_type]}>FORMAT</dt>
+              <dd :if={@preview_job[:content_type]}>{@preview_job[:content_type]}</dd>
+
+              <dt>TIME</dt>
+              <dd>{format_time(@preview_job[:timestamp])}</dd>
+
+              <dt :if={@preview_job[:error]}>ERROR</dt>
+              <dd :if={@preview_job[:error]} class="job-detail-error">{@preview_job[:error]}</dd>
+            </dl>
+
+            <div :if={@preview_job[:preview_data]} class="job-detail-preview">
+              <div class="printer-jobs-header">
+                <span class="printer-jobs-title">PREVIEW</span>
+              </div>
+              <div class="preview-frame">
+                <img
+                  :if={@preview_job[:preview_content_type] == "image/png"}
+                  src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
+                  alt="Label preview"
+                />
+                <iframe
+                  :if={@preview_job[:preview_content_type] == "application/pdf"}
+                  src={"data:application/pdf;base64,#{@preview_job[:preview_data]}"}
+                  class="preview-pdf-modal"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -540,6 +568,110 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 {format_media_list(@selected_printer[:media_supported])}
               </dd>
             </dl>
+
+            <div class="printer-jobs-section">
+              <div class="printer-jobs-header">
+                <span class="printer-jobs-title">PRINT HISTORY</span>
+                <span class="printer-jobs-count">{length(@printer_jobs)}</span>
+              </div>
+              <div :if={@printer_jobs == []} class="printer-jobs-empty">
+                No jobs sent to this printer yet
+              </div>
+              <table :if={@printer_jobs != []} class="printer-jobs-table">
+                <thead>
+                  <tr>
+                    <th>STS</th>
+                    <th>JOB ID</th>
+                    <th>LABEL</th>
+                    <th>TIME</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    :for={job <- @printer_jobs}
+                    class="printer-jobs-row-clickable"
+                    phx-click="show_job_from_printer"
+                    phx-value-job-id={job.job_id}
+                  >
+                    <td>
+                      <div class={"status-indicator #{status_class(job[:status])}"}>
+                        <div class="status-dot"></div>
+                        <span class="status-text">{status_label(job[:status])}</span>
+                      </div>
+                    </td>
+                    <td class="printer-jobs-id">{truncate_id(job.job_id)}</td>
+                    <td>{job[:label_name] || "—"}</td>
+                    <td>{format_time(job.timestamp)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Printers Slide-Out Panel --%>
+      <div
+        class={"printers-panel-backdrop #{if @show_printers_panel, do: "printers-panel-backdrop-visible"}"}
+        phx-click="toggle_printers_panel"
+      >
+      </div>
+      <div class={"printers-panel #{if @show_printers_panel, do: "printers-panel-open"}"}>
+        <div class="printers-panel-header">
+          <span class="printers-panel-title">DEVICES</span>
+          <div class="printers-panel-actions">
+            <button class="refresh-btn" phx-click="refresh_printers" title="Refresh printers">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M11.5 2.5A5.5 5.5 0 1 0 13 7"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M11.5 0.5v2h2"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <button class="preview-modal-close" phx-click="toggle_printers_panel">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.5" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <form class="printers-panel-search" phx-change="search_printers">
+          <input
+            type="text"
+            placeholder="Search printers..."
+            value={@printer_search}
+            name="search"
+            class="printers-search-input"
+            autocomplete="off"
+            phx-debounce="150"
+          />
+        </form>
+        <div class="printers-panel-list">
+          <div
+            :for={printer <- filtered_printers(@printers, @printer_search)}
+            class="printers-panel-row"
+            phx-click="show_printer"
+            phx-value-name={printer.name}
+          >
+            <div class="printers-panel-row-dot"></div>
+            <div class="printers-panel-row-info">
+              <span class="printers-panel-row-name">{printer.name}</span>
+              <span class="printers-panel-row-uri">{printer.uri}</span>
+            </div>
+            <span class="printers-panel-row-state">{printer_state_label(printer[:state])}</span>
+          </div>
+          <div :if={filtered_printers(@printers, @printer_search) == []} class="printers-panel-empty">
+            No printers found
           </div>
         </div>
       </div>
@@ -632,4 +764,15 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   defp format_media_list(media) when is_list(media), do: Enum.join(media, ", ")
   defp format_media_list(media) when is_binary(media), do: media
   defp format_media_list(_), do: "—"
+
+  defp filtered_printers(printers, ""), do: printers
+
+  defp filtered_printers(printers, search) do
+    term = String.downcase(search)
+
+    Enum.filter(printers, fn p ->
+      String.contains?(String.downcase(p.name), term) or
+        String.contains?(String.downcase(p.uri), term)
+    end)
+  end
 end

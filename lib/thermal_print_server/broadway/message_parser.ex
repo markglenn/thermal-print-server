@@ -18,7 +18,9 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
           metadata: %{
             label_id: String.t(),
             label_version: pos_integer(),
-            label_name: String.t()
+            label_name: String.t(),
+            label_size: String.t() | nil,
+            dpmm: String.t() | nil
           }
         }
 
@@ -107,7 +109,9 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
       metadata: %{
         label_id: metadata["labelId"],
         label_version: metadata["labelVersion"],
-        label_name: metadata["labelName"]
+        label_name: metadata["labelName"],
+        label_size: metadata["labelSize"],
+        dpmm: metadata["dpmm"]
       }
     }
   end

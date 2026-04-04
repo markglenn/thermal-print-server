@@ -55,6 +55,25 @@ config :ex_aws,
   secret_access_key: [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role],
   region: System.get_env("AWS_REGION", "us-east-1")
 
+# Per-service endpoint overrides (ElasticMQ for SQS, MinIO for S3)
+if sqs_endpoint = System.get_env("AWS_SQS_ENDPOINT") do
+  uri = URI.parse(sqs_endpoint)
+
+  config :ex_aws, :sqs,
+    scheme: "#{uri.scheme}://",
+    host: uri.host,
+    port: uri.port
+end
+
+if s3_endpoint = System.get_env("AWS_S3_ENDPOINT") do
+  uri = URI.parse(s3_endpoint)
+
+  config :ex_aws, :s3,
+    scheme: "#{uri.scheme}://",
+    host: uri.host,
+    port: uri.port
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

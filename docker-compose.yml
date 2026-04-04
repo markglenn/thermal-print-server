@@ -12,8 +12,19 @@ services:
     environment:
       - MIX_ENV=dev
       - CUPS_URI=ipp://cups:631
+      - PRINT_QUEUE_URL=http://elasticmq:9324/000000000000/thermal-print-queue
+      - PRINT_BUCKET=thermal-print-jobs
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - AWS_SQS_ENDPOINT=http://elasticmq:9324
+      - AWS_S3_ENDPOINT=http://minio:9000
     depends_on:
       cups:
+        condition: service_healthy
+      elasticmq:
+        condition: service_started
+      minio:
         condition: service_healthy
     command: bash -c "mix deps.get && mix compile && mix assets.setup && mix assets.build && mix phx.server"
     stdin_open: true
@@ -32,7 +43,44 @@ services:
     volumes:
       - cups-data:/etc/cups
 
+  elasticmq:
+    image: softwaremill/elasticmq-native
+    ports:
+      - "9324:9324"
+    volumes:
+      - ./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      - MINIO_ROOT_USER=test
+      - MINIO_ROOT_PASSWORD=testtest1
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 test testtest1;
+      mc mb --ignore-existing local/thermal-print-jobs;
+      echo 'MinIO bucket ready';
+      "
+
 volumes:
   mix-deps:
   mix-build:
   cups-data:
+  minio-data:

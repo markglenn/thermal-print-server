@@ -20,6 +20,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
         module:
           {BroadwaySQS.Producer,
            queue_url: Application.fetch_env!(:thermal_print_server, :sqs_queue_url),
+           receive_interval: 200,
            config: [region: Application.fetch_env!(:thermal_print_server, :aws_region)]},
         concurrency: 1
       ],
@@ -79,11 +80,22 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   end
 
   defp generate_preview(parsed) do
-    case Preview.generate(parsed.data, parsed.content_type) do
+    opts = preview_opts(parsed.metadata)
+
+    case Preview.generate(parsed.data, parsed.content_type, opts) do
       {:ok, preview} -> preview
       {:error, _reason} -> nil
     end
   end
+
+  defp preview_opts(metadata) do
+    []
+    |> maybe_opt(:size, metadata.label_size)
+    |> maybe_opt(:dpmm, metadata.dpmm)
+  end
+
+  defp maybe_opt(opts, _key, nil), do: opts
+  defp maybe_opt(opts, key, val), do: Keyword.put(opts, key, val)
 
   @spec track_success(MessageParser.parsed(), map() | nil) :: :ok | {:error, term()}
   defp track_success(parsed, preview) do

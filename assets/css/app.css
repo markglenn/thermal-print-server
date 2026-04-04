@@ -632,6 +632,18 @@
   gap: 8px;
 }
 
+.test-row {
+  display: flex;
+  gap: 12px;
+}
+
+.test-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .test-label {
   font-size: 9px;
   font-weight: 500;
@@ -875,22 +887,214 @@
   to { transform: rotate(360deg); }
 }
 
-.printer-card-clickable {
+/* ============================================================
+   HEADER DEVICES BUTTON
+   ============================================================ */
+
+.header-devices-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: var(--th-surface);
+  color: var(--th-text-muted);
   cursor: pointer;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  font-family: var(--th-font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.printer-card-clickable:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
+.header-devices-btn:hover {
+  color: var(--th-text);
+  border-color: var(--th-border-bright);
+}
+
+.header-devices-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+
+.header-devices-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--th-accent, #c8956c);
+  color: var(--th-bg, #f5f0e8);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ============================================================
+   PRINTERS SLIDE-OUT PANEL
+   ============================================================ */
+
+.printers-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.printers-panel-backdrop-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.printers-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--th-bg);
+  border-left: 1px solid var(--th-border);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+
+.printers-panel-open {
+  transform: translateX(0);
+}
+
+.printers-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--th-border);
+}
+
+.printers-panel-title {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--th-text-muted);
+  font-weight: 500;
+}
+
+.printers-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.printers-panel-search {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--th-border);
+}
+
+.printers-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: var(--th-surface);
+  color: var(--th-text);
+  font-family: var(--th-font-mono, monospace);
+  font-size: 12px;
+  outline: none;
+}
+
+.printers-search-input:focus {
+  border-color: var(--th-border-bright);
+}
+
+.printers-search-input::placeholder {
+  color: var(--th-text-muted);
+}
+
+.printers-panel-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.printers-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--th-border);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.printers-panel-row:hover {
+  background: var(--th-surface);
+}
+
+.printers-panel-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--th-green, #4a7a5b);
+  flex-shrink: 0;
+}
+
+.printers-panel-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.printers-panel-row-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--th-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.printers-panel-row-uri {
+  display: block;
+  font-size: 10px;
+  color: var(--th-text-muted);
+  font-family: var(--th-font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.printers-panel-row-state {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--th-text-muted);
+  flex-shrink: 0;
+}
+
+.printers-panel-empty {
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--th-text-muted);
+  letter-spacing: 1px;
 }
 
 .printer-modal {
-  max-width: 480px;
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .printer-modal-body {
   padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .printer-detail-list {
@@ -917,6 +1121,117 @@
 .printer-detail-mono {
   font-family: var(--th-font-mono, monospace);
   font-size: 11px;
+}
+
+/* Printer job history */
+
+.printer-jobs-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--th-border);
+  padding-top: 16px;
+}
+
+.printer-jobs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.printer-jobs-title {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--th-text-muted);
+  font-weight: 500;
+}
+
+.printer-jobs-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--th-border);
+  color: var(--th-text-muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.printer-jobs-empty {
+  font-size: 11px;
+  color: var(--th-text-muted);
+  letter-spacing: 0.5px;
+}
+
+.printer-jobs-table {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+
+.printer-jobs-table th {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: var(--th-text-muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--th-border);
+}
+
+.printer-jobs-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--th-border);
+  color: var(--th-text);
+}
+
+.printer-jobs-id {
+  font-family: var(--th-font-mono, monospace);
+  font-size: 10px;
+}
+
+.printer-jobs-row-clickable {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.printer-jobs-row-clickable:hover {
+  background: var(--th-surface);
+}
+
+/* ============================================================
+   JOB DETAIL MODAL
+   ============================================================ */
+
+.job-detail-modal {
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.job-detail-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.job-detail-error {
+  color: var(--th-red, #c45b5b);
+  font-family: var(--th-font-mono, monospace);
+  font-size: 11px;
+}
+
+.job-detail-preview {
+  margin-top: 20px;
+  border-top: 1px solid var(--th-border);
+  padding-top: 16px;
+}
+
+.job-detail-preview .preview-frame {
+  margin-top: 8px;
 }
 
 /* ============================================================
@@ -962,10 +1277,6 @@
     align-items: flex-start;
   }
 
-  .printer-grid {
-    grid-template-columns: 1fr;
-  }
-
   .jobs-table-wrap {
     margin: 0 -24px;
     border-radius: 0;
@@ -990,20 +1301,6 @@
 /* ============================================================
    ANIMATIONS — entry
    ============================================================ */
-
-.printer-card {
-  animation: card-in 0.4s ease both;
-}
-
-.printer-card:nth-child(1) { animation-delay: 0.05s; }
-.printer-card:nth-child(2) { animation-delay: 0.1s; }
-.printer-card:nth-child(3) { animation-delay: 0.15s; }
-.printer-card:nth-child(4) { animation-delay: 0.2s; }
-
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 .thermal-header {
   animation: fade-down 0.5s ease both;

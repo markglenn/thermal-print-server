@@ -8,16 +8,16 @@ defmodule ThermalPrintServer.Jobs.Preview do
 
   alias ThermalPrintServer.Printer.Labelary
 
-  @spec generate(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
-  def generate(data, content_type) do
+  @spec generate(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def generate(data, content_type, opts \\ []) do
     case content_type do
-      "application/vnd.zebra.zpl" -> generate_zpl_preview(data)
+      "application/vnd.zebra.zpl" -> generate_zpl_preview(data, opts)
       "application/pdf" -> generate_pdf_preview(data)
     end
   end
 
-  defp generate_zpl_preview(zpl) do
-    case Labelary.render(zpl) do
+  defp generate_zpl_preview(zpl, opts) do
+    case Labelary.render(zpl, opts) do
       {:ok, png_bytes} ->
         {:ok, %{preview_data: Base.encode64(png_bytes), preview_content_type: "image/png"}}
 
