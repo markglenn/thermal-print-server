@@ -10,6 +10,9 @@ SQS --> Broadway Pipeline --> [S3 fetch if needed] --> IPP (Hippy) --> CUPS --> 
                                               Preview (Labelary / PDF)
                                                             |
                                                   LiveView Dashboard
+
+Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
+                 ---> S3 printer snapshot (sites/{site_id}/printers.json)
 ```
 
 - **Broadway** consumes from SQS with backpressure and batching
@@ -55,12 +58,14 @@ SQS --> Broadway Pipeline --> [S3 fetch if needed] --> IPP (Hippy) --> CUPS --> 
 - `Printer.CupsDiscovery` — Discovers printers from CUPS via IPP `GetPrinters` + `GetPrinterAttributes`
 - `Printer.Worker` — Sends print data via Hippy, sets IPP document format per content type
 - `Printer.Labelary` — Renders ZPL to PNG via Labelary API
+- `Events.Publisher` — Publishes job status, printer changes, and heartbeats to SNS; writes printer snapshots to S3
 
 ## Development
 
 Development uses Docker Compose with a devcontainer:
 
 - **CUPS container** — runs test printers (`TestZebra-4x6`, `TestZebra-4x2`, `TestZebra-Capture`)
+- **goaws container** — local SQS + SNS mock (replaces ElasticMQ), with a response queue subscribed to the SNS topic
 - **App container** — Elixir with live reload, auto-discovers printers from CUPS
 
 Start with `docker compose up --build` or open in VS Code via **Dev Containers: Reopen in Container**.
@@ -74,6 +79,9 @@ All runtime config via environment variables in `runtime.exs`:
 - `PRINT_QUEUE_URL` — SQS queue (Broadway only starts when set)
 - `PRINT_BUCKET` — S3 bucket for large jobs
 - `PRINTER_N_NAME` / `PRINTER_N_URI` — static printer definitions (merged with CUPS discovery)
+- `RESPONSE_TOPIC_ARN` — SNS topic for outbound events (Publisher only starts when set)
+- `SITE_ID` — identifies this print server instance (required when `RESPONSE_TOPIC_ARN` is set)
+- `HEARTBEAT_INTERVAL` — seconds between heartbeat events (default 60)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
 
 ## Commands

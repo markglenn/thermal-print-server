@@ -35,6 +35,18 @@ if print_bucket = System.get_env("PRINT_BUCKET") do
   config :thermal_print_server, :print_bucket, print_bucket
 end
 
+if response_topic_arn = System.get_env("RESPONSE_TOPIC_ARN") do
+  config :thermal_print_server, :response_topic_arn, response_topic_arn
+end
+
+if site_id = System.get_env("SITE_ID") do
+  config :thermal_print_server, :site_id, site_id
+end
+
+if heartbeat_interval = System.get_env("HEARTBEAT_INTERVAL") do
+  config :thermal_print_server, :heartbeat_interval, String.to_integer(heartbeat_interval)
+end
+
 # Build printer map from PRINTER_*_NAME / PRINTER_*_URI env vars
 printers =
   System.get_env()
@@ -69,6 +81,15 @@ if s3_endpoint = System.get_env("AWS_S3_ENDPOINT") do
   uri = URI.parse(s3_endpoint)
 
   config :ex_aws, :s3,
+    scheme: "#{uri.scheme}://",
+    host: uri.host,
+    port: uri.port
+end
+
+if sns_endpoint = System.get_env("AWS_SNS_ENDPOINT") do
+  uri = URI.parse(sns_endpoint)
+
+  config :ex_aws, :sns,
     scheme: "#{uri.scheme}://",
     host: uri.host,
     port: uri.port

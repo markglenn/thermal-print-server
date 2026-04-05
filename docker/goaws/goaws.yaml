@@ -1,0 +1,19 @@
+Local:
+  Host: goaws
+  Port: 4100
+  AccountId: "000000000000"
+  LogToFile: false
+  LogFile: ""
+  QueueAttributeDefaults:
+    VisibilityTimeout: 30
+    ReceiveMessageWaitTimeSeconds: 0
+
+  Queues:
+    - Name: thermal-print-queue
+    - Name: thermal-response-queue
+
+  Topics:
+    - Name: thermal-events
+      Subscriptions:
+        - QueueName: thermal-response-queue
+          Raw: true

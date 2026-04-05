@@ -16,7 +16,7 @@ defmodule ThermalPrintServer.Application do
         ThermalPrintServer.Jobs.Store,
         ThermalPrintServer.Printer.Registry,
         ThermalPrintServerWeb.Endpoint
-      ] ++ broadway_children()
+      ] ++ broadway_children() ++ publisher_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -30,6 +30,14 @@ defmodule ThermalPrintServer.Application do
   defp broadway_children do
     if Application.get_env(:thermal_print_server, :sqs_queue_url) do
       [ThermalPrintServer.Broadway.PrintPipeline]
+    else
+      []
+    end
+  end
+
+  defp publisher_children do
+    if Application.get_env(:thermal_print_server, :response_topic_arn) do
+      [ThermalPrintServer.Events.Publisher]
     else
       []
     end

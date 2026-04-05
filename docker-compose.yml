@@ -12,17 +12,21 @@ services:
     environment:
       - MIX_ENV=dev
       - CUPS_URI=ipp://cups:631
-      - PRINT_QUEUE_URL=http://elasticmq:9324/000000000000/thermal-print-queue
+      - PRINT_QUEUE_URL=http://goaws:4100/000000000000/thermal-print-queue
       - PRINT_BUCKET=thermal-print-jobs
+      - RESPONSE_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:thermal-events
+      - SITE_ID=dev-local
+      - HEARTBEAT_INTERVAL=30
       - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_SECRET_ACCESS_KEY=testtest1
       - AWS_REGION=us-east-1
-      - AWS_SQS_ENDPOINT=http://elasticmq:9324
+      - AWS_SQS_ENDPOINT=http://goaws:4100
+      - AWS_SNS_ENDPOINT=http://goaws:4100
       - AWS_S3_ENDPOINT=http://minio:9000
     depends_on:
       cups:
         condition: service_healthy
-      elasticmq:
+      goaws:
         condition: service_started
       minio:
         condition: service_healthy
@@ -43,12 +47,14 @@ services:
     volumes:
       - cups-data:/etc/cups
 
-  elasticmq:
-    image: softwaremill/elasticmq-native
+  goaws:
+    image: pafortin/goaws
     ports:
-      - "9324:9324"
+      - "4100:4100"
     volumes:
-      - ./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf
+      - ./docker/goaws/goaws.yaml:/conf/goaws.yaml
+    logging:
+      driver: "none"
 
   minio:
     image: minio/minio
@@ -74,7 +80,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 test testtest1;
+      mc alias set local http://minio:9000 test testtest1 --api s3v4;
       mc mb --ignore-existing local/thermal-print-jobs;
       echo 'MinIO bucket ready';
       "
