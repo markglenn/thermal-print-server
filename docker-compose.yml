@@ -16,6 +16,7 @@ services:
       - PRINT_BUCKET=thermal-print-jobs
       - RESPONSE_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:thermal-events
       - SITE_ID=dev-local
+      - SITE_NAME=Dev Workstation
       - HEARTBEAT_INTERVAL=30
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=testtest1

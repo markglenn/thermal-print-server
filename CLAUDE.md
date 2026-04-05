@@ -81,6 +81,7 @@ All runtime config via environment variables in `runtime.exs`:
 - `PRINTER_N_NAME` / `PRINTER_N_URI` — static printer definitions (merged with CUPS discovery)
 - `RESPONSE_TOPIC_ARN` — SNS topic for outbound events (Publisher only starts when set)
 - `SITE_ID` — identifies this print server instance (required when `RESPONSE_TOPIC_ARN` is set)
+- `SITE_NAME` — human-readable site name (e.g., "Denver Warehouse"); defaults to `SITE_ID`
 - `HEARTBEAT_INTERVAL` — seconds between heartbeat events (default 60)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
 

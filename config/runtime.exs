@@ -43,6 +43,10 @@ if site_id = System.get_env("SITE_ID") do
   config :thermal_print_server, :site_id, site_id
 end
 
+if site_name = System.get_env("SITE_NAME") do
+  config :thermal_print_server, :site_name, site_name
+end
+
 if heartbeat_interval = System.get_env("HEARTBEAT_INTERVAL") do
   config :thermal_print_server, :heartbeat_interval, String.to_integer(heartbeat_interval)
 end

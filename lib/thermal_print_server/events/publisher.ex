@@ -88,6 +88,7 @@ defmodule ThermalPrintServer.Events.Publisher do
     }
 
     publish(state, event, "heartbeat")
+    write_printer_snapshot(state.site_id, Registry.list_all())
     schedule_heartbeat(state.heartbeat_interval)
     {:noreply, state}
   end
@@ -117,11 +118,13 @@ defmodule ThermalPrintServer.Events.Publisher do
     bucket = Application.get_env(:thermal_print_server, :print_bucket)
 
     if bucket do
-      key = "sites/#{site_id}/printers.json"
+      key = "sites/#{site_id}/manifest.json"
 
       body =
         Jason.encode!(%{
           siteId: site_id,
+          siteName: Application.get_env(:thermal_print_server, :site_name, site_id),
+          queueUrl: Application.get_env(:thermal_print_server, :sqs_queue_url),
           printers: Enum.map(printers, &sanitize_printer/1),
           updatedAt: DateTime.utc_now() |> DateTime.to_iso8601()
         })
@@ -140,7 +143,6 @@ defmodule ThermalPrintServer.Events.Publisher do
   defp sanitize_printer(printer) do
     Map.take(printer, [
       :name,
-      :uri,
       :state,
       :info,
       :location,
