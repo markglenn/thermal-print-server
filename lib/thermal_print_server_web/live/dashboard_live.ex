@@ -31,7 +31,10 @@ defmodule ThermalPrintServerWeb.DashboardLive do
        printer_jobs: [],
        show_test_form: false,
        show_printers_panel: false,
-       printer_search: ""
+       printer_search: "",
+       filter_device: "",
+       filter_status: "",
+       filter_time: ""
      )}
   end
 
@@ -75,6 +78,15 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
   def handle_event("search_printers", %{"search" => search}, socket) do
     {:noreply, assign(socket, printer_search: search)}
+  end
+
+  def handle_event("update_filters", params, socket) do
+    {:noreply,
+     assign(socket,
+       filter_device: params["device"] || "",
+       filter_status: params["status"] || "",
+       filter_time: params["time"] || ""
+     )}
   end
 
   def handle_event("toggle_test_form", _params, socket) do
@@ -357,6 +369,29 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           <span class="label-line"></span>
         </div>
 
+        <form :if={@jobs != []} class="feed-filters" phx-change="update_filters">
+          <select name="device" class="feed-filter-select">
+            <option value="">ALL DEVICES</option>
+            <option :for={name <- job_device_names(@jobs)} value={name} selected={@filter_device == name}>
+              {String.upcase(name)}
+            </option>
+          </select>
+          <select name="status" class="feed-filter-select">
+            <option value="">ALL STATUS</option>
+            <option value="completed" selected={@filter_status == "completed"}>DONE</option>
+            <option value="failed" selected={@filter_status == "failed"}>FAIL</option>
+            <option value="printing" selected={@filter_status == "printing"}>SEND</option>
+            <option value="queued" selected={@filter_status == "queued"}>WAIT</option>
+          </select>
+          <select name="time" class="feed-filter-select">
+            <option value="">ALL TIME</option>
+            <option value="1" selected={@filter_time == "1"}>LAST 1 MIN</option>
+            <option value="5" selected={@filter_time == "5"}>LAST 5 MIN</option>
+            <option value="15" selected={@filter_time == "15"}>LAST 15 MIN</option>
+            <option value="60" selected={@filter_time == "60"}>LAST 1 HOUR</option>
+          </select>
+        </form>
+
         <div :if={@jobs == []} class="jobs-empty">
           <div class="empty-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -418,7 +453,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
             </thead>
             <tbody id="job-rows" phx-update="replace">
               <tr
-                :for={job <- @jobs}
+                :for={job <- filtered_jobs(@jobs, @filter_device, @filter_status, @filter_time)}
                 id={"job-#{job.job_id}"}
                 class={"job-row #{status_row_class(job[:status])}"}
               >
@@ -772,6 +807,38 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   defp format_media_list(media) when is_list(media), do: Enum.join(media, ", ")
   defp format_media_list(media) when is_binary(media), do: media
   defp format_media_list(_), do: "—"
+
+  defp job_device_names(jobs) do
+    jobs
+    |> Enum.map(& &1[:printer])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp filtered_jobs(jobs, device, status, time) do
+    jobs
+    |> filter_by_device(device)
+    |> filter_by_status(status)
+    |> filter_by_time(time)
+  end
+
+  defp filter_by_device(jobs, ""), do: jobs
+  defp filter_by_device(jobs, device), do: Enum.filter(jobs, &(&1[:printer] == device))
+
+  defp filter_by_status(jobs, ""), do: jobs
+
+  defp filter_by_status(jobs, status) do
+    status_atom = String.to_existing_atom(status)
+    Enum.filter(jobs, &(&1[:status] == status_atom))
+  end
+
+  defp filter_by_time(jobs, ""), do: jobs
+
+  defp filter_by_time(jobs, minutes) do
+    cutoff = DateTime.add(DateTime.utc_now(), -String.to_integer(minutes), :minute)
+    Enum.filter(jobs, &(DateTime.compare(&1.timestamp, cutoff) != :lt))
+  end
 
   defp filtered_printers(printers, ""), do: printers
 

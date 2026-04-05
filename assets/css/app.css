@@ -359,6 +359,30 @@
   margin-bottom: 24px;
 }
 
+.feed-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.feed-filter-select {
+  font-family: var(--th-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--th-border);
+  border-radius: 6px;
+  background: var(--th-surface-raised);
+  color: var(--th-text-dim);
+  outline: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.feed-filter-select:focus {
+  border-color: var(--th-amber);
+  color: var(--th-text);
+}
+
 .jobs-empty {
   display: flex;
   flex-direction: column;
