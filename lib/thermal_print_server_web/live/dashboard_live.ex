@@ -9,7 +9,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(ThermalPrintServer.PubSub, "print_jobs")
       Phoenix.PubSub.subscribe(ThermalPrintServer.PubSub, "printers")
-      :timer.send_interval(1000, self(), :tick)
     end
 
     jobs = Store.recent(100)
@@ -20,7 +19,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
        jobs: jobs,
        printers: printers,
        page_title: "Print Dashboard",
-       now: DateTime.utc_now(),
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
        total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
        test_data: TestJob.sample_zpl(),
@@ -38,10 +36,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   end
 
   @impl true
-  def handle_info(:tick, socket) do
-    {:noreply, assign(socket, now: DateTime.utc_now())}
-  end
-
   def handle_info({:printers_updated, printers}, socket) do
     {:noreply, assign(socket, printers: printers)}
   end
@@ -242,7 +236,21 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           <div class="header-divider"></div>
           <div class="header-stat">
             <span class="stat-label">UTC</span>
-            <span class="stat-value stat-time">{Calendar.strftime(@now, "%H:%M:%S")}</span>
+            <span class="stat-value stat-time" id="utc-clock" phx-hook=".UtcClock" phx-update="ignore">{Calendar.strftime(DateTime.utc_now(), "%H:%M:%S")}</span>
+            <script :type={Phoenix.LiveView.ColocatedHook} name=".UtcClock">
+              export default {
+                mounted() {
+                  this.tick()
+                  this.timer = setInterval(() => this.tick(), 1000)
+                },
+                tick() {
+                  this.el.textContent = new Date().toISOString().slice(11, 19)
+                },
+                destroyed() {
+                  clearInterval(this.timer)
+                }
+              }
+            </script>
           </div>
         </div>
       </header>
