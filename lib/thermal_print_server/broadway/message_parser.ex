@@ -5,6 +5,8 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
 
   @required_keys ~w(jobId printer)
   @valid_content_types ~w(application/vnd.zebra.zpl application/pdf)
+  # 1 MB max for inline data — larger payloads should use s3Key
+  @max_inline_bytes 1_048_576
 
   @type parsed :: %{
           job_id: String.t(),
@@ -54,12 +56,25 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
   # Must have "data", "s3Key", or legacy "zpl" field
   defp validate_data_field(map) do
     cond do
-      Map.has_key?(map, "data") and is_binary(map["data"]) -> :ok
-      Map.has_key?(map, "s3Key") and is_binary(map["s3Key"]) -> :ok
-      Map.has_key?(map, "zpl") and is_binary(map["zpl"]) -> :ok
-      true -> {:error, "missing required field: data or s3Key"}
+      Map.has_key?(map, "data") and is_binary(map["data"]) ->
+        validate_inline_size(map["data"])
+
+      Map.has_key?(map, "s3Key") and is_binary(map["s3Key"]) ->
+        :ok
+
+      Map.has_key?(map, "zpl") and is_binary(map["zpl"]) ->
+        validate_inline_size(map["zpl"])
+
+      true ->
+        {:error, "missing required field: data or s3Key"}
     end
   end
+
+  defp validate_inline_size(data) when byte_size(data) > @max_inline_bytes do
+    {:error, "inline data exceeds #{@max_inline_bytes} byte limit — use s3Key for large payloads"}
+  end
+
+  defp validate_inline_size(_data), do: :ok
 
   @spec validate_types(map()) :: :ok | {:error, String.t()}
   defp validate_types(map) do

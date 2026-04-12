@@ -15,12 +15,22 @@ defmodule ThermalPrintServer.Application do
         {Phoenix.PubSub, name: ThermalPrintServer.PubSub},
         ThermalPrintServer.Jobs.Store,
         ThermalPrintServer.Printer.Registry,
+        {Task.Supervisor, name: ThermalPrintServer.TaskSupervisor},
         ThermalPrintServerWeb.Endpoint
       ] ++ broadway_children() ++ publisher_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: ThermalPrintServer.Supervisor]
+    # Higher restart tolerance for remote/unattended deployments.
+    # Default (3 in 5s) is too aggressive — a brief network blip can
+    # cascade into a full app shutdown.
+    opts = [
+      strategy: :one_for_one,
+      name: ThermalPrintServer.Supervisor,
+      max_restarts: 10,
+      max_seconds: 60
+    ]
+
     Supervisor.start_link(children, opts)
   end
 

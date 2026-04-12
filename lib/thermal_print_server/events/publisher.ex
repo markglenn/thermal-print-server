@@ -3,6 +3,10 @@ defmodule ThermalPrintServer.Events.Publisher do
   Publishes events to SNS for external consumers (ERP, label editor, etc.).
   Subscribes to internal PubSub channels and publishes job status, printer
   changes, and periodic heartbeats. Also writes printer state snapshots to S3.
+
+  All external I/O (SNS publish, S3 write) runs in fire-and-forget tasks
+  under ThermalPrintServer.TaskSupervisor so retries never block this
+  GenServer's mailbox.
   """
 
   use GenServer
@@ -10,6 +14,9 @@ defmodule ThermalPrintServer.Events.Publisher do
   require Logger
 
   alias ThermalPrintServer.Printer.Registry
+
+  @max_retries 3
+  @base_delay 1_000
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -29,7 +36,7 @@ defmodule ThermalPrintServer.Events.Publisher do
 
     # Write initial printer snapshot in case printers were discovered before we started
     printers = Registry.list_all()
-    write_printer_snapshot(site_id, printers)
+    async_write_snapshot(site_id, printers)
 
     state = %{
       topic_arn: topic_arn,
@@ -57,7 +64,7 @@ defmodule ThermalPrintServer.Events.Publisher do
         timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
-      publish(state, event, "job_status")
+      async_publish(state, event, "job_status")
     end
 
     {:noreply, state}
@@ -71,8 +78,8 @@ defmodule ThermalPrintServer.Events.Publisher do
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    publish(state, event, "printer_change")
-    write_printer_snapshot(state.site_id, printers)
+    async_publish(state, event, "printer_change")
+    async_write_snapshot(state.site_id, printers)
     {:noreply, %{state | printer_count: length(printers)}}
   end
 
@@ -87,11 +94,29 @@ defmodule ThermalPrintServer.Events.Publisher do
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    publish(state, event, "heartbeat")
-    write_printer_snapshot(state.site_id, Registry.list_all())
+    async_publish(state, event, "heartbeat")
+    async_write_snapshot(state.site_id, Registry.list_all())
     schedule_heartbeat(state.heartbeat_interval)
     {:noreply, state}
   end
+
+  # -- Async wrappers --
+  # All external I/O is dispatched to the TaskSupervisor.
+  # If the task crashes, it's logged and discarded — the Publisher stays up.
+
+  defp async_publish(state, event, event_type) do
+    Task.Supervisor.start_child(ThermalPrintServer.TaskSupervisor, fn ->
+      publish(state, event, event_type)
+    end)
+  end
+
+  defp async_write_snapshot(site_id, printers) do
+    Task.Supervisor.start_child(ThermalPrintServer.TaskSupervisor, fn ->
+      write_printer_snapshot(site_id, printers)
+    end)
+  end
+
+  # -- Synchronous implementations (run inside tasks) --
 
   defp publish(state, event, event_type) do
     message = Jason.encode!(event)
@@ -101,16 +126,16 @@ defmodule ThermalPrintServer.Events.Publisher do
       %{name: "event_type", data_type: :string, value: {:string, event_type}}
     ]
 
-    case ExAws.SNS.publish(message,
-           topic_arn: state.topic_arn,
-           message_attributes: attrs
-         )
-         |> ExAws.request() do
+    request = ExAws.SNS.publish(message, topic_arn: state.topic_arn, message_attributes: attrs)
+
+    case retry(fn -> ExAws.request(request) end) do
       {:ok, _} ->
         Logger.debug("Published #{event_type} event for site #{state.site_id}")
 
       {:error, reason} ->
-        Logger.error("Failed to publish #{event_type}: #{inspect(reason)}")
+        Logger.error(
+          "Failed to publish #{event_type} after #{@max_retries} attempts: #{inspect(reason)}"
+        )
     end
   end
 
@@ -129,14 +154,31 @@ defmodule ThermalPrintServer.Events.Publisher do
           updatedAt: DateTime.utc_now() |> DateTime.to_iso8601()
         })
 
-      case ExAws.S3.put_object(bucket, key, body, content_type: "application/json")
-           |> ExAws.request() do
+      request = ExAws.S3.put_object(bucket, key, body, content_type: "application/json")
+
+      case retry(fn -> ExAws.request(request) end) do
         {:ok, _} ->
           Logger.debug("Wrote printer snapshot to s3://#{bucket}/#{key}")
 
         {:error, reason} ->
-          Logger.error("Failed to write printer snapshot: #{inspect(reason)}")
+          Logger.error(
+            "Failed to write printer snapshot after #{@max_retries} attempts: #{inspect(reason)}"
+          )
       end
+    end
+  end
+
+  defp retry(fun, attempt \\ 1) do
+    case fun.() do
+      {:ok, _} = success ->
+        success
+
+      {:error, _} = error when attempt >= @max_retries ->
+        error
+
+      {:error, _} ->
+        Process.sleep(@base_delay * attempt)
+        retry(fun, attempt + 1)
     end
   end
 

@@ -9,6 +9,7 @@ defmodule ThermalPrintServer.Jobs.Preview do
     case content_type do
       "application/vnd.zebra.zpl" -> generate_zpl_preview(data, opts)
       "application/pdf" -> generate_pdf_preview(data)
+      other -> {:error, "unsupported content type for preview: #{other}"}
     end
   end
 

@@ -48,7 +48,13 @@ if site_name = System.get_env("SITE_NAME") do
 end
 
 if heartbeat_interval = System.get_env("HEARTBEAT_INTERVAL") do
-  config :thermal_print_server, :heartbeat_interval, String.to_integer(heartbeat_interval)
+  case Integer.parse(heartbeat_interval) do
+    {seconds, ""} when seconds > 0 ->
+      config :thermal_print_server, :heartbeat_interval, seconds
+
+    _ ->
+      IO.warn("Invalid HEARTBEAT_INTERVAL #{inspect(heartbeat_interval)}, using default (60s)")
+  end
 end
 
 # Build printer map from PRINTER_*_NAME / PRINTER_*_URI env vars

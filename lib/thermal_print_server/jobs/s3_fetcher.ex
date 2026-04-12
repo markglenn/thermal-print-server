@@ -7,15 +7,27 @@ defmodule ThermalPrintServer.Jobs.S3Fetcher do
 
   require Logger
 
+  # 30-second timeout for S3 fetches
+  @fetch_timeout 30_000
+
   @spec fetch(String.t()) :: {:ok, binary()} | {:error, term()}
   def fetch(s3_key) do
-    bucket = Application.fetch_env!(:thermal_print_server, :print_bucket)
+    case Application.get_env(:thermal_print_server, :print_bucket) do
+      nil ->
+        Logger.error("S3 fetch requested but PRINT_BUCKET is not configured")
+        {:error, "PRINT_BUCKET not configured"}
 
+      bucket ->
+        do_fetch(bucket, s3_key)
+    end
+  end
+
+  defp do_fetch(bucket, s3_key) do
     Logger.info("Fetching print data from S3: #{bucket}/#{s3_key}")
 
     bucket
     |> ExAws.S3.get_object(s3_key)
-    |> ExAws.request()
+    |> ExAws.request(timeout: @fetch_timeout, recv_timeout: @fetch_timeout)
     |> case do
       {:ok, %{body: body}} ->
         decompress(body, s3_key)

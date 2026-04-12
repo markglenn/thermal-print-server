@@ -14,6 +14,9 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
     "printer-info"
   ]
 
+  # 10-second timeout for CUPS IPP operations
+  @ipp_timeout 10_000
+
   @spec discover(String.t()) :: {:ok, map()} | {:error, term()}
   def discover(cups_uri) do
     Logger.info("Discovering printers from CUPS at #{cups_uri}")
@@ -27,8 +30,10 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
   end
 
   defp list_printers(cups_uri) do
-    Hippy.Operation.GetPrinters.new(cups_uri, requested_attributes: @list_attributes)
-    |> Hippy.send_operation()
+    ipp_request(fn ->
+      Hippy.Operation.GetPrinters.new(cups_uri, requested_attributes: @list_attributes)
+      |> Hippy.send_operation()
+    end)
     |> case do
       {:ok, %Hippy.Response{printer_attributes: attrs}} ->
         attr_map = attrs_to_map(attrs)
@@ -66,8 +71,10 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
   end
 
   defp get_capabilities(uri) do
-    Hippy.Operation.GetPrinterAttributes.new(uri)
-    |> Hippy.send_operation()
+    ipp_request(fn ->
+      Hippy.Operation.GetPrinterAttributes.new(uri)
+      |> Hippy.send_operation()
+    end)
     |> case do
       {:ok, %Hippy.Response{printer_attributes: attrs}} ->
         attr_map = attrs_to_map(attrs)
@@ -106,4 +113,13 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp ipp_request(fun) do
+    task = Task.async(fun)
+
+    case Task.yield(task, @ipp_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      nil -> {:error, :timeout}
+    end
+  end
 end

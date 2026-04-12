@@ -110,30 +110,43 @@ defmodule ThermalPrintServerWeb.DashboardLive do
       dpmm: socket.assigns.test_dpmm
     ]
 
-    {:ok, _job_id} = TestJob.submit(printer, data, content_type, opts)
-    {:noreply, socket}
+    case TestJob.submit(printer, data, content_type, opts) do
+      {:ok, _job_id} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Test job failed: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("clear_queue", _params, socket) do
-    if queue_url = Application.get_env(:thermal_print_server, :sqs_queue_url) do
-      queue_url |> ExAws.SQS.purge_queue() |> ExAws.request()
+    sqs_result =
+      case Application.get_env(:thermal_print_server, :sqs_queue_url) do
+        nil -> :ok
+        queue_url -> queue_url |> ExAws.SQS.purge_queue() |> ExAws.request()
+      end
+
+    case sqs_result do
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Queue purge failed: #{inspect(reason)}")}
+
+      _ ->
+        Store.clear()
+
+        Phoenix.PubSub.broadcast(
+          ThermalPrintServer.PubSub,
+          "print_jobs",
+          {:job_updated, nil, %{}}
+        )
+
+        {:noreply,
+         assign(socket,
+           jobs: [],
+           total_completed: 0,
+           total_failed: 0,
+           preview_job: nil
+         )}
     end
-
-    Store.clear()
-
-    Phoenix.PubSub.broadcast(
-      ThermalPrintServer.PubSub,
-      "print_jobs",
-      {:job_updated, nil, %{}}
-    )
-
-    {:noreply,
-     assign(socket,
-       jobs: [],
-       total_completed: 0,
-       total_failed: 0,
-       preview_job: nil
-     )}
   end
 
   def handle_event("show_printer", %{"name" => name}, socket) do
@@ -263,7 +276,9 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           <div class="header-divider"></div>
           <div class="header-stat">
             <span class="stat-label">UTC</span>
-            <span class="stat-value stat-time" id="utc-clock" phx-hook=".UtcClock" phx-update="ignore">{Calendar.strftime(DateTime.utc_now(), "%H:%M:%S")}</span>
+            <span class="stat-value stat-time" id="utc-clock" phx-hook=".UtcClock" phx-update="ignore">
+              {Calendar.strftime(DateTime.utc_now(), "%H:%M:%S")}
+            </span>
             <script :type={Phoenix.LiveView.ColocatedHook} name=".UtcClock">
               export default {
                 mounted() {
@@ -375,7 +390,12 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           <button class="feed-action-btn" phx-click="toggle_test_form">
             TEST JOB
           </button>
-          <button :if={@jobs != []} class="clear-queue-btn" phx-click="clear_queue" data-confirm="Clear the SQS queue and all job history?">
+          <button
+            :if={@jobs != []}
+            class="clear-queue-btn"
+            phx-click="clear_queue"
+            data-confirm="Clear the SQS queue and all job history?"
+          >
             CLEAR
           </button>
         </div>
@@ -383,7 +403,11 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         <form :if={@jobs != []} class="feed-filters" phx-change="update_filters">
           <select name="device" class="feed-filter-select">
             <option value="">ALL DEVICES</option>
-            <option :for={name <- job_device_names(@jobs)} value={name} selected={@filter_device == name}>
+            <option
+              :for={name <- job_device_names(@jobs)}
+              value={name}
+              selected={@filter_device == name}
+            >
               {String.upcase(name)}
             </option>
           </select>
@@ -818,16 +842,31 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
   defp filter_by_status(jobs, ""), do: jobs
 
+  @valid_statuses %{
+    "completed" => :completed,
+    "failed" => :failed,
+    "printing" => :printing,
+    "queued" => :queued
+  }
+
   defp filter_by_status(jobs, status) do
-    status_atom = String.to_existing_atom(status)
-    Enum.filter(jobs, &(&1[:status] == status_atom))
+    case Map.fetch(@valid_statuses, status) do
+      {:ok, status_atom} -> Enum.filter(jobs, &(&1[:status] == status_atom))
+      :error -> jobs
+    end
   end
 
   defp filter_by_time(jobs, ""), do: jobs
 
   defp filter_by_time(jobs, minutes) do
-    cutoff = DateTime.add(DateTime.utc_now(), -String.to_integer(minutes), :minute)
-    Enum.filter(jobs, &(DateTime.compare(&1.timestamp, cutoff) != :lt))
+    case Integer.parse(minutes) do
+      {mins, ""} ->
+        cutoff = DateTime.add(DateTime.utc_now(), -mins, :minute)
+        Enum.filter(jobs, &(DateTime.compare(&1.timestamp, cutoff) != :lt))
+
+      _ ->
+        jobs
+    end
   end
 
   defp filtered_printers(printers, ""), do: printers

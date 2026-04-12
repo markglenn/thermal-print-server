@@ -6,6 +6,9 @@ defmodule ThermalPrintServer.Printer.Worker do
 
   require Logger
 
+  # 30-second timeout for IPP operations
+  @print_timeout 30_000
+
   @spec print(map(), String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
   def print(%{uri: uri}, data, content_type, copies) do
     Logger.info("Sending #{content_type} print job to #{uri} (#{copies} copies)")
@@ -18,16 +21,24 @@ defmodule ThermalPrintServer.Printer.Worker do
         mime -> Keyword.put(job_opts, :document_format, mime)
       end
 
-    Hippy.Operation.PrintJob.new(uri, data, job_opts)
-    |> Hippy.send_operation()
-    |> case do
-      {:ok, %Hippy.Response{request_id: request_id}} ->
+    task =
+      Task.async(fn ->
+        Hippy.Operation.PrintJob.new(uri, data, job_opts)
+        |> Hippy.send_operation()
+      end)
+
+    case Task.yield(task, @print_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, %Hippy.Response{request_id: request_id}}} ->
         Logger.info("Print job #{request_id} sent successfully to #{uri}")
         :ok
 
-      {:error, reason} ->
+      {:ok, {:error, reason}} ->
         Logger.error("Print failed to #{uri}: #{inspect(reason)}")
         {:error, reason}
+
+      nil ->
+        Logger.error("Print timed out after #{@print_timeout}ms to #{uri}")
+        {:error, :timeout}
     end
   end
 end

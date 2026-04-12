@@ -298,9 +298,10 @@ defmodule ThermalPrintServerWeb.DashboardLiveTest do
       Phoenix.PubSub.broadcast(
         ThermalPrintServer.PubSub,
         "printers",
-        {:printers_updated, [
-          %{name: "NewPrinter", uri: "ipp://localhost/new", state: 3}
-        ]}
+        {:printers_updated,
+         [
+           %{name: "NewPrinter", uri: "ipp://localhost/new", state: 3}
+         ]}
       )
 
       html = render(view)

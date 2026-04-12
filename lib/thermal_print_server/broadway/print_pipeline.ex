@@ -34,12 +34,16 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   @impl true
   def handle_message(_processor, message, _context) do
     with {:ok, parsed} <- MessageParser.parse(message.data),
+         :ok <- check_duplicate(parsed),
          {:ok, parsed} <- resolve_data(parsed),
          {:ok, printer} <- resolve_printer(parsed),
          :ok <- send_to_printer(printer, parsed) do
       preview = generate_preview(parsed)
       track_success(parsed, preview)
     else
+      {:duplicate, job_id} ->
+        Logger.info("Skipping duplicate job #{job_id}")
+
       {:error, reason} ->
         Logger.error("Print job failed: #{inspect(reason)}\n  Raw data: #{message.data}")
         track_failure(message.data, reason)
@@ -50,6 +54,13 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   @impl true
   def handle_failed(messages, _context), do: messages
+
+  defp check_duplicate(%{job_id: job_id}) do
+    case Store.get(job_id) do
+      %{status: :completed} -> {:duplicate, job_id}
+      _ -> :ok
+    end
+  end
 
   # Fetch data from S3 if the message has an s3_key instead of inline data
   defp resolve_data(%{s3_key: nil} = parsed), do: {:ok, parsed}
@@ -77,8 +88,15 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   defp generate_preview(parsed) do
     opts = preview_opts(parsed.metadata)
-    {:ok, preview} = Preview.generate(parsed.data, parsed.content_type, opts)
-    preview
+
+    case Preview.generate(parsed.data, parsed.content_type, opts) do
+      {:ok, preview} ->
+        preview
+
+      {:error, reason} ->
+        Logger.warning("Preview generation failed for #{parsed.job_id}: #{inspect(reason)}")
+        nil
+    end
   end
 
   defp preview_opts(metadata) do
@@ -110,7 +128,6 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   end
 
   defp count_pages(%{copies: copies}), do: copies
-
 
   @spec track_success(MessageParser.parsed(), map() | nil) :: :ok | {:error, term()}
   defp track_success(parsed, preview) do

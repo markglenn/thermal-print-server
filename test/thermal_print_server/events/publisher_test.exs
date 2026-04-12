@@ -10,7 +10,12 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     original_heartbeat = Application.get_env(:thermal_print_server, :heartbeat_interval)
     original_bucket = Application.get_env(:thermal_print_server, :print_bucket)
 
-    Application.put_env(:thermal_print_server, :response_topic_arn, "arn:aws:sns:us-east-1:000000000000:test")
+    Application.put_env(
+      :thermal_print_server,
+      :response_topic_arn,
+      "arn:aws:sns:us-east-1:000000000000:test"
+    )
+
     Application.put_env(:thermal_print_server, :site_id, "test-site")
     Application.put_env(:thermal_print_server, :heartbeat_interval, 3600)
     # Disable S3 writes in tests
@@ -51,7 +56,8 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     Phoenix.PubSub.broadcast(
       ThermalPrintServer.PubSub,
       "print_jobs",
-      {:job_updated, "test-job-123", %{status: :completed, printer: "TestPrinter", content_type: "application/vnd.zebra.zpl"}}
+      {:job_updated, "test-job-123",
+       %{status: :completed, printer: "TestPrinter", content_type: "application/vnd.zebra.zpl"}}
     )
 
     # Give the publisher time to process

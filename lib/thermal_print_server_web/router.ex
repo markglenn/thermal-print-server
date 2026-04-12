@@ -15,6 +15,12 @@ defmodule ThermalPrintServerWeb.Router do
   end
 
   scope "/", ThermalPrintServerWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+  end
+
+  scope "/", ThermalPrintServerWeb do
     pipe_through :browser
 
     live "/", DashboardLive
