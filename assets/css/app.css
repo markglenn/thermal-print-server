@@ -609,48 +609,59 @@
    TEST JOB PANEL
    ============================================================ */
 
-.test-section {
-  margin-bottom: 36px;
-}
-
-.label-toggle {
+.feed-action-btn {
   background: none;
-  border: none;
+  border: 1px solid var(--th-amber);
+  border-radius: 4px;
   cursor: pointer;
   font-family: var(--th-font-mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
-  letter-spacing: 4px;
+  letter-spacing: 2px;
   color: var(--th-amber);
-  padding: 0;
-  transition: color 0.15s;
+  padding: 4px 10px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
 }
 
-.label-toggle:hover {
-  color: var(--th-text);
+.feed-action-btn:hover {
+  background: var(--th-amber);
+  color: #fff;
 }
 
-.test-panel {
+.clear-queue-btn {
+  background: none;
   border: 1px solid var(--th-border);
-  border-radius: 8px;
-  background: var(--th-surface);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--th-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--th-text-dim);
+  padding: 4px 10px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.clear-queue-btn:hover {
+  color: var(--th-red, #ef4444);
+  border-color: var(--th-red, #ef4444);
+}
+
+.test-modal {
+  width: 480px;
+  max-width: 90vw;
+}
+
+.test-modal-body {
   padding: 20px;
-  animation: panel-in 0.3s ease both;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-@keyframes panel-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.test-panel-inner {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-
-.test-form-col {
+.test-modal-fields {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -733,23 +744,39 @@
   transform: scale(0.98);
 }
 
-/* -- Preview column in test panel -- */
-.test-preview-col {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .preview-frame {
   border: 1px solid var(--th-border);
   border-radius: 6px;
   background: #fff;
   padding: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: 0;
   flex: 1;
   min-height: 200px;
+}
+
+.preview-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.preview-page + .preview-page {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #ccc;
+}
+
+.preview-page-label {
+  font-family: var(--th-font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #999;
+  margin-bottom: 6px;
 }
 
 .preview-frame img {
@@ -1317,9 +1344,6 @@
     display: none;
   }
 
-  .test-panel-inner {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ============================================================

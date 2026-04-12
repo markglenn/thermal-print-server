@@ -1,12 +1,8 @@
 defmodule ThermalPrintServer.Jobs.Preview do
   @moduledoc """
-  Generates preview images for print jobs.
-  ZPL is rendered to PNG via Labelary. PDF is used directly.
+  Generates preview data for print jobs.
+  ZPL is passed through for client-side rendering. PDF is used directly.
   """
-
-  require Logger
-
-  alias ThermalPrintServer.Printer.Labelary
 
   @spec generate(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def generate(data, content_type, opts \\ []) do
@@ -17,14 +13,13 @@ defmodule ThermalPrintServer.Jobs.Preview do
   end
 
   defp generate_zpl_preview(zpl, opts) do
-    case Labelary.render(zpl, opts) do
-      {:ok, png_bytes} ->
-        {:ok, %{preview_data: Base.encode64(png_bytes), preview_content_type: "image/png"}}
-
-      {:error, reason} ->
-        Logger.warning("Preview generation failed for ZPL: #{inspect(reason)}")
-        {:error, reason}
-    end
+    {:ok,
+     %{
+       preview_data: zpl,
+       preview_content_type: "application/vnd.zebra.zpl",
+       preview_label_size: Keyword.get(opts, :size, "4x6"),
+       preview_dpmm: Keyword.get(opts, :dpmm, "8dpmm")
+     }}
   end
 
   defp generate_pdf_preview(pdf_data) do

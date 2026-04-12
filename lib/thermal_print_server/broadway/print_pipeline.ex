@@ -20,13 +20,14 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
         module:
           {BroadwaySQS.Producer,
            queue_url: Application.fetch_env!(:thermal_print_server, :sqs_queue_url),
-           receive_interval: 200,
+           wait_time_seconds: 20,
            config: [region: Application.fetch_env!(:thermal_print_server, :aws_region)]},
         concurrency: 1
       ],
       processors: [
         default: [concurrency: 4]
-      ]
+      ],
+      batchers: []
     )
   end
 
@@ -38,22 +39,17 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
          :ok <- send_to_printer(printer, parsed) do
       preview = generate_preview(parsed)
       track_success(parsed, preview)
-      message
     else
       {:error, reason} ->
+        Logger.error("Print job failed: #{inspect(reason)}\n  Raw data: #{message.data}")
         track_failure(message.data, reason)
-        Broadway.Message.failed(message, reason)
     end
+
+    message
   end
 
   @impl true
-  def handle_failed(messages, _context) do
-    Enum.each(messages, fn message ->
-      Logger.error("Print job failed: #{inspect(message.status)}")
-    end)
-
-    messages
-  end
+  def handle_failed(messages, _context), do: messages
 
   # Fetch data from S3 if the message has an s3_key instead of inline data
   defp resolve_data(%{s3_key: nil} = parsed), do: {:ok, parsed}
@@ -81,11 +77,8 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   defp generate_preview(parsed) do
     opts = preview_opts(parsed.metadata)
-
-    case Preview.generate(parsed.data, parsed.content_type, opts) do
-      {:ok, preview} -> preview
-      {:error, _reason} -> nil
-    end
+    {:ok, preview} = Preview.generate(parsed.data, parsed.content_type, opts)
+    preview
   end
 
   defp preview_opts(metadata) do
@@ -97,6 +90,28 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   defp maybe_opt(opts, _key, nil), do: opts
   defp maybe_opt(opts, key, val), do: Keyword.put(opts, key, val)
 
+  defp count_pages(%{content_type: "application/vnd.zebra.zpl", data: data, copies: copies})
+       when is_binary(data) do
+    labels = data |> String.upcase() |> String.split("^XA") |> length() |> Kernel.-(1) |> max(1)
+    labels * copies
+  end
+
+  defp count_pages(%{content_type: "application/pdf", data: data, copies: copies})
+       when is_binary(data) do
+    # Count PDF page objects via /Type /Page (excluding /Type /Pages)
+    pages =
+      data
+      |> String.split("/Type /Page")
+      |> length()
+      |> Kernel.-(1)
+      |> max(1)
+
+    pages * copies
+  end
+
+  defp count_pages(%{copies: copies}), do: copies
+
+
   @spec track_success(MessageParser.parsed(), map() | nil) :: :ok | {:error, term()}
   defp track_success(parsed, preview) do
     attrs =
@@ -104,9 +119,9 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
         printer: parsed.printer,
         label_name: parsed.metadata.label_name,
         content_type: parsed.content_type,
-        status: :completed,
-        chunk_index: parsed.chunk_index,
-        total_chunks: parsed.total_chunks
+        copies: parsed.copies,
+        page_count: count_pages(parsed),
+        status: :completed
       }
       |> maybe_merge(preview)
 

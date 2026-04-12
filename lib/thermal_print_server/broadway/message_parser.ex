@@ -3,13 +3,11 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
   Parses and validates SQS message JSON into structured print job data.
   """
 
-  @required_keys ~w(jobId chunkIndex totalChunks printer)
+  @required_keys ~w(jobId printer)
   @valid_content_types ~w(application/vnd.zebra.zpl application/pdf)
 
   @type parsed :: %{
           job_id: String.t(),
-          chunk_index: non_neg_integer(),
-          total_chunks: pos_integer(),
           printer: String.t(),
           data: String.t() | nil,
           s3_key: String.t() | nil,
@@ -69,12 +67,6 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
       not is_binary(map["jobId"]) ->
         {:error, "jobId must be a string"}
 
-      not is_integer(map["chunkIndex"]) or map["chunkIndex"] < 0 ->
-        {:error, "chunkIndex must be a non-negative integer"}
-
-      not is_integer(map["totalChunks"]) or map["totalChunks"] < 1 ->
-        {:error, "totalChunks must be a positive integer"}
-
       not is_binary(map["printer"]) ->
         {:error, "printer must be a string"}
 
@@ -99,8 +91,6 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
 
     %{
       job_id: map["jobId"],
-      chunk_index: map["chunkIndex"],
-      total_chunks: map["totalChunks"],
       printer: map["printer"],
       data: data,
       s3_key: map["s3Key"],

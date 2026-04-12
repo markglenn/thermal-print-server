@@ -17,7 +17,7 @@ defmodule ThermalPrintServer.Jobs.Store do
 
   @spec record(String.t(), map()) :: :ok
   def record(job_id, attrs) do
-    GenServer.cast(__MODULE__, {:record, job_id, attrs})
+    GenServer.call(__MODULE__, {:record, job_id, attrs})
   end
 
   @spec recent(pos_integer()) :: [map()]
@@ -27,6 +27,12 @@ defmodule ThermalPrintServer.Jobs.Store do
     |> Enum.sort_by(fn {_id, job} -> job.timestamp end, {:desc, DateTime})
     |> Enum.take(limit)
     |> Enum.map(fn {_id, job} -> job end)
+  end
+
+  @spec clear() :: :ok
+  def clear do
+    :ets.delete_all_objects(@table)
+    :ok
   end
 
   @spec get(String.t()) :: map() | nil
@@ -44,7 +50,7 @@ defmodule ThermalPrintServer.Jobs.Store do
   end
 
   @impl true
-  def handle_cast({:record, job_id, attrs}, state) do
+  def handle_call({:record, job_id, attrs}, _from, state) do
     existing =
       case :ets.lookup(@table, job_id) do
         [{_id, job}] -> job
@@ -56,7 +62,7 @@ defmodule ThermalPrintServer.Jobs.Store do
 
     maybe_prune()
 
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
   @spec maybe_prune() :: :ok

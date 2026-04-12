@@ -56,4 +56,42 @@ defmodule ThermalPrintServer.Jobs.StoreTest do
     Process.sleep(20)
     assert length(Store.recent(5)) == 5
   end
+
+  test "clear removes all jobs" do
+    Store.record("job-1", %{status: :completed})
+    Store.record("job-2", %{status: :failed})
+
+    assert length(Store.recent(10)) == 2
+
+    Store.clear()
+
+    assert Store.recent(10) == []
+    assert Store.get("job-1") == nil
+  end
+
+  test "preserves job_id on updates" do
+    Store.record("job-1", %{status: :printing})
+    Store.record("job-1", %{status: :completed, preview_data: "img"})
+
+    job = Store.get("job-1")
+    assert job.job_id == "job-1"
+  end
+
+  test "assigns timestamp on first record" do
+    before = DateTime.utc_now()
+    Store.record("job-1", %{status: :printing})
+
+    job = Store.get("job-1")
+    assert DateTime.compare(job.timestamp, before) in [:gt, :eq]
+  end
+
+  test "preserves original timestamp on updates" do
+    Store.record("job-1", %{status: :printing})
+    original_ts = Store.get("job-1").timestamp
+
+    Process.sleep(10)
+    Store.record("job-1", %{status: :completed})
+
+    assert Store.get("job-1").timestamp == original_ts
+  end
 end

@@ -26,8 +26,6 @@ defmodule ThermalPrintServer.Jobs.TestJob do
 
     message = %{
       "jobId" => job_id,
-      "chunkIndex" => 0,
-      "totalChunks" => 1,
       "printer" => printer_name,
       "data" => data,
       "contentType" => content_type,

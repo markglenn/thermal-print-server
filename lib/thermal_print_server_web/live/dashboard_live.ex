@@ -46,18 +46,11 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   def handle_info({:job_updated, _job_id, _attrs}, socket) do
     jobs = Store.recent(100)
 
-    # Auto-show preview for the latest completed job with a preview
-    preview_job =
-      Enum.find(jobs, socket.assigns.preview_job, fn job ->
-        job[:status] == :completed and job[:preview_data] != nil
-      end)
-
     {:noreply,
      assign(socket,
        jobs: jobs,
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
-       total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
-       preview_job: preview_job
+       total_failed: Enum.count(jobs, &(&1[:status] == :failed))
      )}
   end
 
@@ -119,6 +112,28 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
     {:ok, _job_id} = TestJob.submit(printer, data, content_type, opts)
     {:noreply, socket}
+  end
+
+  def handle_event("clear_queue", _params, socket) do
+    if queue_url = Application.get_env(:thermal_print_server, :sqs_queue_url) do
+      queue_url |> ExAws.SQS.purge_queue() |> ExAws.request()
+    end
+
+    Store.clear()
+
+    Phoenix.PubSub.broadcast(
+      ThermalPrintServer.PubSub,
+      "print_jobs",
+      {:job_updated, nil, %{}}
+    )
+
+    {:noreply,
+     assign(socket,
+       jobs: [],
+       total_completed: 0,
+       total_failed: 0,
+       preview_job: nil
+     )}
   end
 
   def handle_event("show_printer", %{"name" => name}, socket) do
@@ -267,42 +282,51 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         </div>
       </header>
 
-      <%!-- Test Job Panel --%>
-      <section class="test-section">
-        <div class="section-label">
-          <span class="label-line"></span>
-          <button class="label-text label-toggle" phx-click="toggle_test_form">
-            {if @show_test_form, do: "HIDE TEST PANEL", else: "SEND TEST JOB"}
-          </button>
-          <span class="label-line"></span>
-        </div>
+      <%!-- Test Job Modal --%>
+      <div
+        :if={@show_test_form}
+        class="preview-modal-backdrop"
+        phx-click="toggle_test_form"
+      >
+        <div class="preview-modal test-modal" phx-click-away="toggle_test_form">
+          <div class="preview-modal-header">
+            <span class="preview-modal-title">SEND TEST JOB</span>
+            <button class="preview-modal-close" phx-click="toggle_test_form">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.5" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </button>
+          </div>
+          <form class="test-modal-body" phx-change="update_form" phx-submit="submit_test_job">
+            <div class="test-modal-fields">
+              <div class="test-field">
+                <label class="test-label">DEVICE</label>
+                <select class="test-select" name="printer">
+                  <option
+                    :for={p <- @printers}
+                    value={p.name}
+                    selected={p.name == @test_printer}
+                  >
+                    {p.name}
+                  </option>
+                </select>
+              </div>
 
-        <div :if={@show_test_form} class="test-panel">
-          <div class="test-panel-inner">
-            <form class="test-form-col" phx-change="update_form" phx-submit="submit_test_job">
-              <label class="test-label">DEVICE</label>
-              <select class="test-select" name="printer">
-                <option
-                  :for={p <- @printers}
-                  value={p.name}
-                  selected={p.name == @test_printer}
-                >
-                  {p.name}
-                </option>
-              </select>
-
-              <label class="test-label">CONTENT TYPE</label>
-              <select class="test-select" name="content_type">
-                <option
-                  value="application/vnd.zebra.zpl"
-                  selected={@test_content_type == "application/vnd.zebra.zpl"}
-                >
-                  ZPL
-                </option>
-                <option value="application/pdf" selected={@test_content_type == "application/pdf"}>
-                  PDF
-                </option>
-              </select>
+              <div class="test-field">
+                <label class="test-label">CONTENT TYPE</label>
+                <select class="test-select" name="content_type">
+                  <option
+                    value="application/vnd.zebra.zpl"
+                    selected={@test_content_type == "application/vnd.zebra.zpl"}
+                  >
+                    ZPL
+                  </option>
+                  <option value="application/pdf" selected={@test_content_type == "application/pdf"}>
+                    PDF
+                  </option>
+                </select>
+              </div>
 
               <div class="test-row">
                 <div class="test-field">
@@ -324,42 +348,23 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                   </select>
                 </div>
               </div>
-
-              <label class="test-label">DATA</label>
-              <textarea
-                class="test-textarea"
-                name="data"
-                spellcheck="false"
-                rows="12"
-                phx-debounce="300"
-              >{@test_data}</textarea>
-
-              <button type="submit" class="test-submit">
-                SEND TO PRINTER
-              </button>
-            </form>
-
-            <div :if={@preview_job && @preview_job[:preview_data]} class="test-preview-col">
-              <label class="test-label">LABEL PREVIEW</label>
-              <div class="preview-frame">
-                <img
-                  :if={@preview_job[:preview_content_type] == "image/png"}
-                  src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
-                  alt="Label preview"
-                />
-                <iframe
-                  :if={@preview_job[:preview_content_type] == "application/pdf"}
-                  src={"data:application/pdf;base64,#{@preview_job[:preview_data]}"}
-                  class="preview-pdf"
-                />
-              </div>
-              <span class="preview-meta">
-                {@preview_job[:printer] || "—"} — {format_time(@preview_job[:timestamp])}
-              </span>
             </div>
-          </div>
+
+            <label class="test-label">DATA</label>
+            <textarea
+              class="test-textarea"
+              name="data"
+              spellcheck="false"
+              rows="10"
+              phx-debounce="300"
+            >{@test_data}</textarea>
+
+            <button type="submit" class="test-submit">
+              SEND TO PRINTER
+            </button>
+          </form>
         </div>
-      </section>
+      </div>
 
       <%!-- Job Feed --%>
       <section class="jobs-section">
@@ -367,6 +372,12 @@ defmodule ThermalPrintServerWeb.DashboardLive do
           <span class="label-line"></span>
           <span class="label-text">JOB FEED</span>
           <span class="label-line"></span>
+          <button class="feed-action-btn" phx-click="toggle_test_form">
+            TEST JOB
+          </button>
+          <button :if={@jobs != []} class="clear-queue-btn" phx-click="clear_queue" data-confirm="Clear the SQS queue and all job history?">
+            CLEAR
+          </button>
         </div>
 
         <form :if={@jobs != []} class="feed-filters" phx-change="update_filters">
@@ -446,7 +457,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 <th class="th-id">JOB ID</th>
                 <th class="th-printer">DEVICE</th>
                 <th class="th-label">LABEL</th>
-                <th class="th-chunks">CHUNK</th>
+                <th class="th-qty">PAGES</th>
                 <th class="th-time">TIME</th>
                 <th class="th-preview"></th>
               </tr>
@@ -468,13 +479,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 </td>
                 <td class="td-printer">{job[:printer] || "—"}</td>
                 <td class="td-label">{job[:label_name] || "—"}</td>
-                <td class="td-chunks">
-                  <div :if={has_chunks?(job)} class="chunk-bar">
-                    <div class="chunk-fill" style={"width: #{chunk_pct(job)}%"}></div>
-                    <span class="chunk-text">{chunk_display(job)}</span>
-                  </div>
-                  <span :if={!has_chunks?(job)} class="no-chunks">—</span>
-                </td>
+                <td class="td-qty">{job[:page_count] || job[:copies] || 1}</td>
                 <td class="td-time">{format_time(job.timestamp)}</td>
                 <td class="td-preview">
                   <button
@@ -494,7 +499,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
       <%!-- Job Detail Modal --%>
       <div
-        :if={@preview_job && !@show_test_form}
+        :if={@preview_job}
         class="preview-modal-backdrop"
         phx-click="close_preview"
       >
@@ -530,6 +535,9 @@ defmodule ThermalPrintServerWeb.DashboardLive do
               <dt :if={@preview_job[:content_type]}>FORMAT</dt>
               <dd :if={@preview_job[:content_type]}>{@preview_job[:content_type]}</dd>
 
+              <dt>PAGES</dt>
+              <dd>{@preview_job[:page_count] || @preview_job[:copies] || 1}</dd>
+
               <dt>TIME</dt>
               <dd>{format_time(@preview_job[:timestamp])}</dd>
 
@@ -542,10 +550,14 @@ defmodule ThermalPrintServerWeb.DashboardLive do
                 <span class="printer-jobs-title">PREVIEW</span>
               </div>
               <div class="preview-frame">
-                <img
-                  :if={@preview_job[:preview_content_type] == "image/png"}
-                  src={"data:image/png;base64,#{@preview_job[:preview_data]}"}
-                  alt="Label preview"
+                <div
+                  :if={@preview_job[:preview_content_type] == "application/vnd.zebra.zpl"}
+                  id={"zpl-detail-#{@preview_job.job_id}"}
+                  phx-hook="ZplPreview"
+                  phx-update="ignore"
+                  data-zpl={@preview_job[:preview_data]}
+                  data-size={@preview_job[:preview_label_size] || "4x6"}
+                  data-dpmm={@preview_job[:preview_dpmm] || "8dpmm"}
                 />
                 <iframe
                   :if={@preview_job[:preview_content_type] == "application/pdf"}
@@ -756,28 +768,6 @@ defmodule ThermalPrintServerWeb.DashboardLive do
   end
 
   defp truncate_id(id), do: id || "—"
-
-  @spec has_chunks?(map()) :: boolean()
-  defp has_chunks?(%{chunk_index: idx, total_chunks: total})
-       when is_integer(idx) and is_integer(total),
-       do: true
-
-  defp has_chunks?(_), do: false
-
-  @spec chunk_pct(map()) :: non_neg_integer()
-  defp chunk_pct(%{chunk_index: idx, total_chunks: total}) when total > 0 do
-    round((idx + 1) / total * 100)
-  end
-
-  defp chunk_pct(_), do: 0
-
-  @spec chunk_display(map()) :: String.t()
-  defp chunk_display(%{chunk_index: idx, total_chunks: total})
-       when is_integer(idx) and is_integer(total) do
-    "#{idx + 1}/#{total}"
-  end
-
-  defp chunk_display(_), do: "—"
 
   @spec format_time(DateTime.t() | term()) :: String.t()
   defp format_time(%DateTime{} = dt) do

@@ -20,7 +20,7 @@ defmodule ThermalPrintServer.Printer.Labelary do
 
     Logger.info("Rendering ZPL via Labelary (#{dpmm}, #{size})")
 
-    case Req.post(url, body: zpl, headers: [{"accept", "image/png"}]) do
+    case Req.post(url, body: zpl, headers: [{"accept", "image/png"}], retry: :transient, max_retries: 3) do
       {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
         {:ok, body}
 
@@ -32,6 +32,22 @@ defmodule ThermalPrintServer.Printer.Labelary do
         Logger.error("Labelary request failed: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  @max_preview_pages 10
+
+  @spec render_all(String.t(), keyword()) :: {:ok, [binary()]} | {:error, term()}
+  def render_all(zpl, opts \\ []) do
+    count = zpl |> String.upcase() |> String.split("^XA") |> length() |> Kernel.-(1) |> max(1)
+    count = min(count, @max_preview_pages)
+
+    0..(count - 1)
+    |> Enum.reduce_while({:ok, []}, fn index, {:ok, acc} ->
+      case render(zpl, Keyword.put(opts, :index, index)) do
+        {:ok, png} -> {:cont, {:ok, acc ++ [png]}}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
   end
 
   @doc """
