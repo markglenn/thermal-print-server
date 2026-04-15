@@ -63,6 +63,8 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
   end
 
   # Fetch data from S3 if the message has an s3_key instead of inline data
+  @spec resolve_data(MessageParser.parsed()) ::
+          {:ok, MessageParser.parsed()} | {:error, String.t()}
   defp resolve_data(%{s3_key: nil} = parsed), do: {:ok, parsed}
 
   defp resolve_data(%{s3_key: s3_key} = parsed) when is_binary(s3_key) do
@@ -71,8 +73,6 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
       {:error, reason} -> {:error, "S3 fetch failed: #{inspect(reason)}"}
     end
   end
-
-  defp resolve_data(parsed), do: {:ok, parsed}
 
   @spec resolve_printer(MessageParser.parsed()) :: {:ok, map()} | {:error, String.t()}
   defp resolve_printer(parsed) do
