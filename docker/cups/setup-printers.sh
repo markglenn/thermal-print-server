@@ -35,6 +35,15 @@ lpadmin -p TestZebra-Capture \
   -D "Test Zebra Capture (writes to /tmp/cups-capture)" \
   -L "Docker"
 
+lpadmin -p Zebra-2x1 \
+  -E \
+  -v socket://192.168.81.238:9100 \
+  -m drv:///sample.drv/zebra.ppd \
+  -o PageSize=w144h72 \
+  -o media=w144h72 \
+  -D "Zebra 2x1 (192.168.81.238)" \
+  -L "LAN"
+
 echo "Test printers configured:"
 lpstat -p
 

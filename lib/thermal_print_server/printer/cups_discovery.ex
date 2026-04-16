@@ -88,6 +88,9 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
 
   defp extract_capabilities(attrs) do
     %{}
+    |> maybe_put(:state, parse_state(attrs["printer-state"]))
+    |> maybe_put(:info, attrs["printer-info"])
+    |> maybe_put(:location, attrs["printer-location"])
     |> maybe_put(:resolution, parse_resolution(attrs["printer-resolution-supported"]))
     |> maybe_put(:resolution_default, parse_resolution(attrs["printer-resolution-default"]))
     |> maybe_put(:media_supported, attrs["media-supported"])
@@ -95,9 +98,15 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
     |> maybe_put(:media_ready, attrs["media-ready"])
   end
 
-  # Resolution comes as {x_dpi, y_dpi, unit} where unit 3 = dpi, 4 = dpcm
-  defp parse_resolution({x, y, 3}), do: %{x: x, y: y, unit: :dpi}
-  defp parse_resolution({x, y, 4}), do: %{x: x, y: y, unit: :dpcm}
+  # Hippy returns PrinterState enum atom; dashboard uses IPP integer codes.
+  defp parse_state(:idle), do: 3
+  defp parse_state(:processing), do: 4
+  defp parse_state(:stopped), do: 5
+  defp parse_state(_), do: nil
+
+  defp parse_resolution(%Hippy.PrintResolution{xfeed: x, feed: y, unit: unit}) do
+    %{x: x, y: y, unit: unit}
+  end
 
   defp parse_resolution(resolutions) when is_list(resolutions) do
     Enum.map(resolutions, &parse_resolution/1)
