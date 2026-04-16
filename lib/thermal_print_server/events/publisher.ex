@@ -191,8 +191,7 @@ defmodule ThermalPrintServer.Events.Publisher do
       :resolution,
       :resolution_default,
       :media_default,
-      :media_ready,
-      :media_supported
+      :media_ready
     ])
   end
 

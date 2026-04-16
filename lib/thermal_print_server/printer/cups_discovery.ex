@@ -93,7 +93,6 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
     |> maybe_put(:location, attrs["printer-location"])
     |> maybe_put(:resolution, parse_resolution(attrs["printer-resolution-supported"]))
     |> maybe_put(:resolution_default, parse_resolution(attrs["printer-resolution-default"]))
-    |> maybe_put(:media_supported, attrs["media-supported"])
     |> maybe_put(:media_default, attrs["media-default"])
     |> maybe_put(:media_ready, attrs["media-ready"])
   end

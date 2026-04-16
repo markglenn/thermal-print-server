@@ -37,10 +37,8 @@ lpadmin -p TestZebra-Capture \
 
 lpadmin -p Zebra-2x1 \
   -E \
-  -v socket://192.168.81.238:9100 \
-  -m drv:///sample.drv/zebra.ppd \
-  -o PageSize=w144h72 \
-  -o media=w144h72 \
+  -v ipp://192.168.81.238/ipp/print \
+  -m everywhere \
   -D "Zebra 2x1 (192.168.81.238)" \
   -L "LAN"
 

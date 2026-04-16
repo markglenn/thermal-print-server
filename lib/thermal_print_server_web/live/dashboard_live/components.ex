@@ -146,10 +146,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
 
   def test_job_modal(assigns) do
     ~H"""
-    <div
-      class="preview-modal-backdrop"
-      phx-click="toggle_test_form"
-    >
+    <div class="preview-modal-backdrop">
       <div class="preview-modal test-modal" phx-click-away="toggle_test_form">
         <div class="preview-modal-header">
           <span class="preview-modal-title">SEND TEST JOB</span>
@@ -380,10 +377,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
 
   def job_detail_modal(assigns) do
     ~H"""
-    <div
-      class="preview-modal-backdrop"
-      phx-click="close_preview"
-    >
+    <div class="preview-modal-backdrop">
       <div class="preview-modal job-detail-modal" phx-click-away="close_preview">
         <div class="preview-modal-header">
           <span class="preview-modal-title">JOB DETAILS</span>
@@ -454,10 +448,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
 
   def printer_detail_modal(assigns) do
     ~H"""
-    <div
-      class="preview-modal-backdrop"
-      phx-click="close_printer"
-    >
+    <div class="preview-modal-backdrop">
       <div class="preview-modal printer-modal" phx-click-away="close_printer">
         <div class="preview-modal-header">
           <span class="preview-modal-title">{String.upcase(@printer.name)}</span>
@@ -497,10 +488,6 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
               {format_media_list(@printer[:media_ready])}
             </dd>
 
-            <dt :if={@printer[:media_supported]}>SUPPORTED MEDIA</dt>
-            <dd :if={@printer[:media_supported]}>
-              {format_media_list(@printer[:media_supported])}
-            </dd>
           </dl>
 
           <div class="printer-jobs-section">

@@ -197,7 +197,7 @@ The Registry GenServer maintains a map of printer names to configuration maps in
 ```
 name, uri, state (3=Idle, 4=Processing, 5=Stopped),
 info, location, resolution, resolution_default,
-media_supported, media_default, media_ready
+media_default, media_ready
 ```
 
 **Refresh triggers:**
@@ -248,7 +248,6 @@ The Publisher writes a JSON manifest to `sites/{site_id}/manifest.json` in the p
       "info": "Zebra GK420t",
       "location": "Dock 1",
       "resolution": [{ "x": 203, "y": 203, "unit": "dpi" }],
-      "media_supported": ["4x6", "4x4"],
       "media_default": "4x6"
     }
   ],

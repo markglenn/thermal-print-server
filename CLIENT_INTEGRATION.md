@@ -48,8 +48,7 @@ Each common prefix (e.g., `sites/warehouse-denver/`) is a site. Read its `manife
       "location": "Dock 3",
       "resolution_default": { "x": 203, "y": 203, "unit": "dpi" },
       "media_default": "oe_4x6-label_4x6in",
-      "media_ready": ["oe_4x6-label_4x6in"],
-      "media_supported": ["oe_4x6-label_4x6in", "oe_4x4-label_4x4in"]
+      "media_ready": ["oe_4x6-label_4x6in"]
     }
   ],
   "updatedAt": "2026-04-05T22:11:25.081033Z"
@@ -78,7 +77,6 @@ All fields except `name` are optional. Availability depends on the printer's CUP
 | `resolution` | array | All supported resolutions |
 | `media_default` | string | Default loaded media (e.g., `"oe_4x6-label_4x6in"`) |
 | `media_ready` | array | Currently loaded media sizes |
-| `media_supported` | array | All supported media sizes |
 
 ### Freshness
 
