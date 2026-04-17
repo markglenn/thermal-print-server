@@ -65,15 +65,17 @@ defmodule ThermalPrintServer.Printer.Worker do
     end
   end
 
-  defp ipp_successful?(status_code) when is_atom(status_code) do
+  @doc false
+  def ipp_successful?(status_code) when is_atom(status_code) do
     status_code |> Atom.to_string() |> String.starts_with?("successful")
   end
 
-  defp ipp_successful?(_), do: false
+  def ipp_successful?(_), do: false
 
   # Hippy returns job_attributes as a list of attribute *groups*, each group
   # itself a list of {type, name, value} tuples. Walk the nested structure.
-  defp extract_job_id(attrs) do
+  @doc false
+  def extract_job_id(attrs) do
     attrs
     |> List.flatten()
     |> Enum.find_value(fn

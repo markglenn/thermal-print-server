@@ -129,4 +129,25 @@ defmodule ThermalPrintServer.Events.PublisherTest do
 
     assert Process.whereis(Publisher) |> Process.alive?()
   end
+
+  # The wire protocol promises clients only "completed" and "failed". Dashboard
+  # sub-statuses (:canceled, :blocked) must collapse to "failed" so we don't
+  # strand clients that don't know about the newer terminal states.
+  describe "wire_status/1" do
+    test ":completed is the only atom that stays \"completed\"" do
+      assert Publisher.wire_status(:completed) == "completed"
+    end
+
+    test ":failed stays \"failed\"" do
+      assert Publisher.wire_status(:failed) == "failed"
+    end
+
+    test ":canceled collapses to \"failed\" for client back-compat" do
+      assert Publisher.wire_status(:canceled) == "failed"
+    end
+
+    test ":blocked collapses to \"failed\" for client back-compat" do
+      assert Publisher.wire_status(:blocked) == "failed"
+    end
+  end
 end

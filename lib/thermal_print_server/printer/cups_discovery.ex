@@ -107,19 +107,20 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
 
   # "none" is CUPS's way of saying no active reason; drop it so callers can
   # treat a populated list as "there's a problem."
-  defp parse_state_reasons(nil), do: nil
-  defp parse_state_reasons("none"), do: nil
-  defp parse_state_reasons(""), do: nil
-  defp parse_state_reasons(reason) when is_binary(reason), do: [reason]
+  @doc false
+  def parse_state_reasons(nil), do: nil
+  def parse_state_reasons("none"), do: nil
+  def parse_state_reasons(""), do: nil
+  def parse_state_reasons(reason) when is_binary(reason), do: [reason]
 
-  defp parse_state_reasons(reasons) when is_list(reasons) do
+  def parse_state_reasons(reasons) when is_list(reasons) do
     case Enum.reject(reasons, &(&1 in [nil, "", "none"])) do
       [] -> nil
       filtered -> filtered
     end
   end
 
-  defp parse_state_reasons(_), do: nil
+  def parse_state_reasons(_), do: nil
 
   defp parse_state_message(nil), do: nil
   defp parse_state_message(""), do: nil

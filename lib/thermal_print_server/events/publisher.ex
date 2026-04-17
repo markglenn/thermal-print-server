@@ -178,8 +178,9 @@ defmodule ThermalPrintServer.Events.Publisher do
   # sub-statuses (:canceled, :blocked) are collapsed to "failed" so existing
   # consumers keep working; the precise state travels in `terminalState` and
   # `stateReasons` for clients that want to distinguish.
-  defp wire_status(:completed), do: "completed"
-  defp wire_status(_), do: "failed"
+  @doc false
+  def wire_status(:completed), do: "completed"
+  def wire_status(_), do: "failed"
 
   defp sanitize_printer(printer) do
     Map.take(printer, [

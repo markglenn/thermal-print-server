@@ -107,16 +107,17 @@ defmodule ThermalPrintServer.Printer.JobWatcher do
     end)
   end
 
-  defp normalize_reasons(nil), do: []
-  defp normalize_reasons("none"), do: []
-  defp normalize_reasons(""), do: []
-  defp normalize_reasons(reason) when is_binary(reason), do: [reason]
+  @doc false
+  def normalize_reasons(nil), do: []
+  def normalize_reasons("none"), do: []
+  def normalize_reasons(""), do: []
+  def normalize_reasons(reason) when is_binary(reason), do: [reason]
 
-  defp normalize_reasons(reasons) when is_list(reasons) do
+  def normalize_reasons(reasons) when is_list(reasons) do
     Enum.reject(reasons, &(&1 in [nil, "", "none"]))
   end
 
-  defp normalize_reasons(_), do: []
+  def normalize_reasons(_), do: []
 
   defp normalize_message(nil), do: nil
   defp normalize_message(""), do: nil
@@ -132,18 +133,20 @@ defmodule ThermalPrintServer.Printer.JobWatcher do
     }
   end
 
-  defp terminal?(state) when state in [:completed, :canceled, :aborted], do: true
-  defp terminal?(_), do: false
+  @doc false
+  def terminal?(state) when state in [:completed, :canceled, :aborted], do: true
+  def terminal?(_), do: false
 
   # Map IPP job-state → dashboard status. `:blocked` is a new terminal-ish
   # bucket for jobs CUPS has parked (e.g. printer offline / out of media).
   # Cancellation is intentional, so it gets its own bucket distinct from
   # `:failed` (which is reserved for things actually going wrong, incl. aborts).
-  defp map_status(:completed), do: :completed
-  defp map_status(:canceled), do: :canceled
-  defp map_status(:aborted), do: :failed
-  defp map_status(:processing_stopped), do: :blocked
-  defp map_status(_), do: :printing
+  @doc false
+  def map_status(:completed), do: :completed
+  def map_status(:canceled), do: :canceled
+  def map_status(:aborted), do: :failed
+  def map_status(:processing_stopped), do: :blocked
+  def map_status(_), do: :printing
 
   # Broadcast the full merged record so subscribers that don't re-read from
   # the Store (e.g. Events.Publisher) still see the job's reply_to_queue_url

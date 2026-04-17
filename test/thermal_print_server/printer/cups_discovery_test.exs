@@ -7,6 +7,31 @@ defmodule ThermalPrintServer.Printer.CupsDiscoveryTest do
     assert {:error, _reason} = CupsDiscovery.discover("ipp://localhost:19999")
   end
 
+  describe "parse_state_reasons/1" do
+    test "treats nil / empty / \"none\" as no-active-reason" do
+      assert CupsDiscovery.parse_state_reasons(nil) == nil
+      assert CupsDiscovery.parse_state_reasons("") == nil
+      assert CupsDiscovery.parse_state_reasons("none") == nil
+    end
+
+    test "wraps a single reason string in a list" do
+      assert CupsDiscovery.parse_state_reasons("media-empty") == ["media-empty"]
+    end
+
+    test "filters \"none\" / empty entries from a list" do
+      assert CupsDiscovery.parse_state_reasons(["none"]) == nil
+      assert CupsDiscovery.parse_state_reasons(["paused", "none"]) == ["paused"]
+
+      assert CupsDiscovery.parse_state_reasons(["offline-report", "media-empty"]) ==
+               ["offline-report", "media-empty"]
+    end
+
+    test "returns nil for unexpected shapes instead of crashing" do
+      assert CupsDiscovery.parse_state_reasons(42) == nil
+      assert CupsDiscovery.parse_state_reasons(%{}) == nil
+    end
+  end
+
   # Integration test — only runs when included: mix test --include cups_integration
   describe "with CUPS server" do
     @describetag :cups_integration
