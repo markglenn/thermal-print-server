@@ -43,16 +43,18 @@ if site_name = System.get_env("SITE_NAME") do
   config :thermal_print_server, :site_name, site_name
 end
 
-debug_links =
-  [
-    {"CUPS", System.get_env("CUPS_ADMIN_URL")},
-    {"Queue", System.get_env("QUEUE_UI_URL")}
-  ]
-  |> Enum.reject(fn {_label, url} -> is_nil(url) or url == "" end)
-  |> Enum.map(fn {label, url} -> %{label: label, url: url} end)
+if config_env() != :prod do
+  debug_links =
+    [
+      {"CUPS", System.get_env("CUPS_ADMIN_URL")},
+      {"Queue", System.get_env("QUEUE_UI_URL")}
+    ]
+    |> Enum.reject(fn {_label, url} -> is_nil(url) or url == "" end)
+    |> Enum.map(fn {label, url} -> %{label: label, url: url} end)
 
-if debug_links != [] do
-  config :thermal_print_server, :debug_links, debug_links
+  if debug_links != [] do
+    config :thermal_print_server, :debug_links, debug_links
+  end
 end
 
 if heartbeat_interval = System.get_env("HEARTBEAT_INTERVAL") do
@@ -105,6 +107,18 @@ if s3_endpoint = System.get_env("AWS_S3_ENDPOINT") do
 end
 
 if config_env() == :prod do
+  required_env = ~w(PRINT_QUEUE_URL SITE_ID)
+
+  missing_env =
+    Enum.filter(required_env, fn var ->
+      value = System.get_env(var)
+      is_nil(value) or value == ""
+    end)
+
+  if missing_env != [] do
+    raise "Missing required environment variables: #{Enum.join(missing_env, ", ")}"
+  end
+
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want

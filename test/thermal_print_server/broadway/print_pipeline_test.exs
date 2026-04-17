@@ -122,48 +122,50 @@ defmodule ThermalPrintServer.Broadway.PrintPipelineTest do
   end
 
   describe "handle_message/3 — successful parse with printer error" do
-    test "stores job attributes on print failure" do
-      # Printer exists but IPP connection will fail (no real CUPS)
+    test "marks message failed (SQS redelivery) when printer unreachable" do
       json = build_json(%{"jobId" => "print-fail", "copies" => 3})
       msg = make_message(json)
-      PrintPipeline.handle_message(:default, msg, %{})
+      result = PrintPipeline.handle_message(:default, msg, %{})
 
-      job = Store.get("print-fail")
-      assert job != nil
-      # Either completed (unlikely without CUPS) or failed at send_to_printer
-      assert job[:status] in [:completed, :failed]
+      assert match?(%Broadway.Message{status: {:failed, _}}, result)
+      assert Store.get("print-fail") == nil
     end
 
-    test "always returns the message (acks to SQS)" do
+    test "acks parse failures (permanent)" do
       msg = make_message("invalid")
       result = PrintPipeline.handle_message(:default, msg, %{})
-      assert result == msg
+      assert result.status == :ok
     end
 
-    test "returns message even on printer failure" do
+    test "acks unknown-printer failures (permanent)" do
       json = build_json(%{"printer" => "nonexistent"})
       msg = make_message(json)
       result = PrintPipeline.handle_message(:default, msg, %{})
-      assert result == msg
+      assert result.status == :ok
     end
   end
 
-  describe "handle_message/3 — preview generation" do
-    test "generates ZPL preview data on success" do
-      # This will fail at send_to_printer, so preview won't be stored
-      # But if it succeeds, preview should be present
-      json = build_json(%{"jobId" => "preview-test"})
+  describe "handle_message/3 — duplicate detection" do
+    test "skips jobs already recorded as :completed" do
+      Store.record("dup-completed", %{status: :completed})
+
+      json = build_json(%{"jobId" => "dup-completed"})
       msg = make_message(json)
-      PrintPipeline.handle_message(:default, msg, %{})
+      result = PrintPipeline.handle_message(:default, msg, %{})
 
-      job = Store.get("preview-test")
-      assert job != nil
+      assert result.status == :ok
+      assert Store.get("dup-completed").status == :completed
+    end
 
-      # If the job completed (CUPS was reachable), it should have preview data
-      if job[:status] == :completed do
-        assert job[:preview_data] != nil
-        assert job[:preview_content_type] == "application/vnd.zebra.zpl"
-      end
+    test "skips jobs already recorded as :failed" do
+      Store.record("dup-failed", %{status: :failed, error: "prior"})
+
+      json = build_json(%{"jobId" => "dup-failed"})
+      msg = make_message(json)
+      result = PrintPipeline.handle_message(:default, msg, %{})
+
+      assert result.status == :ok
+      assert Store.get("dup-failed").status == :failed
     end
   end
 end

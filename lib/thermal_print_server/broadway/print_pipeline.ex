@@ -33,57 +33,76 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   @impl true
   def handle_message(_processor, message, _context) do
-    with {:ok, parsed} <- MessageParser.parse(message.data),
+    case run(message.data) do
+      :ok ->
+        message
+
+      {:duplicate, job_id} ->
+        Logger.info("Skipping duplicate job #{job_id}")
+        message
+
+      {:permanent, reason} ->
+        Logger.error("Print job failed (permanent): #{inspect(reason)}\n  Raw data: #{message.data}")
+        track_failure(message.data, reason)
+        message
+
+      {:transient, reason} ->
+        Logger.warning("Print job failed (will retry via SQS redelivery): #{inspect(reason)}")
+        Broadway.Message.failed(message, inspect(reason))
+    end
+  end
+
+  @impl true
+  def handle_failed(messages, _context), do: messages
+
+  defp run(raw) do
+    with {:ok, parsed} <- parse_message(raw),
          :ok <- check_duplicate(parsed),
          {:ok, parsed} <- resolve_data(parsed),
          {:ok, printer} <- resolve_printer(parsed),
          :ok <- send_to_printer(printer, parsed) do
       preview = generate_preview(parsed)
       track_success(parsed, preview)
-    else
-      {:duplicate, job_id} ->
-        Logger.info("Skipping duplicate job #{job_id}")
-
-      {:error, reason} ->
-        Logger.error("Print job failed: #{inspect(reason)}\n  Raw data: #{message.data}")
-        track_failure(message.data, reason)
     end
-
-    message
   end
 
-  @impl true
-  def handle_failed(messages, _context), do: messages
+  defp parse_message(raw) do
+    case MessageParser.parse(raw) do
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, reason} -> {:permanent, "parse error: #{reason}"}
+    end
+  end
 
+  # Terminal states (:completed, :failed) block redelivery; transient errors
+  # aren't recorded so SQS redelivery remains eligible.
   defp check_duplicate(%{job_id: job_id}) do
     case Store.get(job_id) do
-      %{status: :completed} -> {:duplicate, job_id}
+      %{status: status} when status in [:completed, :failed] -> {:duplicate, job_id}
       _ -> :ok
     end
   end
 
-  # Fetch data from S3 if the message has an s3_key instead of inline data
-  @spec resolve_data(MessageParser.parsed()) ::
-          {:ok, MessageParser.parsed()} | {:error, String.t()}
   defp resolve_data(%{s3_key: nil} = parsed), do: {:ok, parsed}
 
   defp resolve_data(%{s3_key: s3_key} = parsed) when is_binary(s3_key) do
     case S3Fetcher.fetch(s3_key) do
       {:ok, data} -> {:ok, %{parsed | data: data, s3_key: nil}}
-      {:error, reason} -> {:error, "S3 fetch failed: #{inspect(reason)}"}
+      {:error, reason} -> {:transient, "S3 fetch failed: #{inspect(reason)}"}
     end
   end
 
-  @spec resolve_printer(MessageParser.parsed()) :: {:ok, map()} | {:error, String.t()}
   defp resolve_printer(parsed) do
     case Registry.lookup(parsed.printer) do
       {:ok, config} -> {:ok, config}
-      {:error, :not_found} -> {:error, "unknown printer: #{parsed.printer}"}
+      {:error, :not_found} -> {:permanent, "unknown printer: #{parsed.printer}"}
     end
   end
 
   defp send_to_printer(printer, parsed) do
-    Worker.print(printer, parsed.data, parsed.content_type, parsed.copies)
+    case Worker.print(printer, parsed.data, parsed.content_type, parsed.copies) do
+      :ok -> :ok
+      {:error, reason} -> {:transient, "print failed: #{inspect(reason)}"}
+    end
   end
 
   defp generate_preview(parsed) do
