@@ -963,6 +963,44 @@
   border-color: var(--th-border-bright);
 }
 
+.header-debug-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-debug-label {
+  font-family: var(--th-font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--th-text-muted);
+}
+
+.header-debug-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--th-border);
+  border-radius: 4px;
+  background: var(--th-surface);
+  color: var(--th-text-muted);
+  font-family: var(--th-font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.header-debug-link:hover {
+  color: var(--th-text);
+  border-color: var(--th-border-bright);
+}
+
+.header-debug-icon {
+  opacity: 0.6;
+}
+
 .header-devices-label {
   font-size: 9px;
   letter-spacing: 2px;

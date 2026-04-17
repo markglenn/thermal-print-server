@@ -18,6 +18,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   attr :printers, :list, required: true
   attr :total_completed, :integer, required: true
   attr :total_failed, :integer, required: true
+  attr :debug_links, :list, default: []
 
   def dashboard_header(assigns) do
     ~H"""
@@ -80,6 +81,28 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
         </div>
       </div>
       <div class="header-right">
+        <div :if={@debug_links != []} class="header-debug-links">
+          <span class="header-debug-label">DEBUG</span>
+          <a
+            :for={link <- @debug_links}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="header-debug-link"
+          >
+            {link.label}
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" class="header-debug-icon">
+              <path
+                d="M10 2h4v4M6.5 9.5L14 2M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </a>
+        </div>
+        <div :if={@debug_links != []} class="header-divider"></div>
         <button class="header-devices-btn" phx-click="toggle_printers_panel">
           <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
             <rect

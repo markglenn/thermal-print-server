@@ -43,6 +43,18 @@ if site_name = System.get_env("SITE_NAME") do
   config :thermal_print_server, :site_name, site_name
 end
 
+debug_links =
+  [
+    {"CUPS", System.get_env("CUPS_ADMIN_URL")},
+    {"Queue", System.get_env("QUEUE_UI_URL")}
+  ]
+  |> Enum.reject(fn {_label, url} -> is_nil(url) or url == "" end)
+  |> Enum.map(fn {label, url} -> %{label: label, url: url} end)
+
+if debug_links != [] do
+  config :thermal_print_server, :debug_links, debug_links
+end
+
 if heartbeat_interval = System.get_env("HEARTBEAT_INTERVAL") do
   case Integer.parse(heartbeat_interval) do
     {seconds, ""} when seconds > 0 ->

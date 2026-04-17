@@ -12,7 +12,7 @@ services:
     environment:
       - MIX_ENV=dev
       - CUPS_URI=ipp://cups:631
-      - PRINT_QUEUE_URL=http://goaws:4100/000000000000/thermal-print-queue
+      - PRINT_QUEUE_URL=http://elasticmq:9324/000000000000/thermal-print-queue
       - PRINT_BUCKET=thermal-print-jobs
       - SITE_ID=dev-local
       - SITE_NAME=Dev Workstation
@@ -20,12 +20,14 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=testtest1
       - AWS_REGION=us-east-1
-      - AWS_SQS_ENDPOINT=http://goaws:4100
+      - AWS_SQS_ENDPOINT=http://elasticmq:9324
       - AWS_S3_ENDPOINT=http://minio:9000
+      - CUPS_ADMIN_URL=http://localhost:631
+      - QUEUE_UI_URL=http://localhost:9325
     depends_on:
       cups:
         condition: service_healthy
-      goaws:
+      elasticmq:
         condition: service_started
       minio:
         condition: service_healthy
@@ -46,14 +48,23 @@ services:
     volumes:
       - cups-data:/etc/cups
 
-  goaws:
-    image: pafortin/goaws
+  elasticmq:
+    image: softwaremill/elasticmq-native
     ports:
-      - "4100:4100"
+      - "9324:9324"
     volumes:
-      - ./docker/goaws/goaws.yaml:/conf/goaws.yaml
-    logging:
-      driver: "none"
+      - ./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf
+
+  elasticmq-ui:
+    image: softwaremill/elasticmq-ui
+    ports:
+      - "9325:3000"
+    environment:
+      - SQS_ENDPOINT=http://elasticmq:9324
+      - AWS_REGION=us-east-1
+    depends_on:
+      elasticmq:
+        condition: service_started
 
   minio:
     image: minio/minio

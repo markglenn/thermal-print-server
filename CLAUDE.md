@@ -68,7 +68,7 @@ Events.Publisher ---> SQS (job_status -> per-request replyToQueueUrl)
 Development uses Docker Compose with a devcontainer:
 
 - **CUPS container** — runs test printers (`TestZebra-4x6`, `TestZebra-4x2`, `TestZebra-Capture`)
-- **goaws container** — local SQS mock (request queue + response queue)
+- **ElasticMQ container** — local SQS mock (API on 9324). Companion `elasticmq-ui` on `localhost:9325` lets you browse queues and peek messages
 - **App container** — Elixir with live reload, auto-discovers printers from CUPS
 
 Start with `docker compose up --build` or open in VS Code via **Dev Containers: Reopen in Container**.

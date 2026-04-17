@@ -96,7 +96,7 @@ Preview failures do not fail the job.
 | **Protocol** | HTTP REST (AWS SQS API)                                        |
 | **Config**   | `PRINT_QUEUE_URL` env var                                      |
 | **Auth**     | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` or instance role |
-| **Dev mock** | GoAWS on port 4100                                             |
+| **Dev mock** | ElasticMQ on port 9324                                         |
 
 Broadway starts only when `PRINT_QUEUE_URL` is set. The producer uses long-polling (20s) with concurrency 1; processing parallelism comes from 4 processor workers.
 
@@ -123,7 +123,7 @@ Two distinct uses:
 | **Library**  | `ex_aws_sqs` (~> 3.4)                                                                           |
 | **Protocol** | HTTP REST (AWS SQS API)                                                                         |
 | **Config**   | Per-request `replyToQueueUrl` in the request message; no static config on the server            |
-| **Dev mock** | GoAWS on port 4100 (`thermal-response-queue`)                                                   |
+| **Dev mock** | ElasticMQ on port 9324 (`thermal-response-queue`)                                               |
 
 Publisher starts when `SITE_ID` is set. Each request may carry a `replyToQueueUrl`; on job completion or failure, a `job_status` message is sent to that queue with `site_id` and `event_type` as SQS message attributes. Requests without a `replyToQueueUrl` get no response (fire-and-forget).
 
@@ -317,12 +317,13 @@ Sent as an SQS message to the request's `replyToQueueUrl`:
 
 Docker Compose runs four services:
 
-| Service | Image          | Port       | Purpose                                            |
-| ------- | -------------- | ---------- | -------------------------------------------------- |
-| `app`   | Elixir 1.18    | 4000       | Phoenix dev server with live reload                |
-| `cups`  | Debian + CUPS  | 631        | Test printers (TestZebra-4x6, 4x2, Capture)        |
-| `goaws` | pafortin/goaws | 4100       | SQS mock (request queue + response queue)          |
-| `minio` | minio/minio    | 9000, 9001 | S3-compatible storage (bucket: thermal-print-jobs) |
+| Service         | Image                        | Port       | Purpose                                            |
+| --------------- | ---------------------------- | ---------- | -------------------------------------------------- |
+| `app`           | Elixir 1.18                  | 4000       | Phoenix dev server with live reload                |
+| `cups`          | Debian + CUPS                | 631        | Test printers (TestZebra-4x6, 4x2, Capture)        |
+| `elasticmq`     | softwaremill/elasticmq-native | 9324       | SQS mock (request queue + response queue)          |
+| `elasticmq-ui`  | softwaremill/elasticmq-ui    | 9325       | Web console for browsing queues at localhost:9325  |
+| `minio`         | minio/minio                  | 9100, 9101 | S3-compatible storage (bucket: thermal-print-jobs) |
 
 A `minio-init` sidecar creates the bucket on first start. The app container waits for CUPS (healthcheck) and MinIO (healthcheck) before starting.
 

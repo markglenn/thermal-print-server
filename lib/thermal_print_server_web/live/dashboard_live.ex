@@ -15,11 +15,13 @@ defmodule ThermalPrintServerWeb.DashboardLive do
 
     jobs = Store.recent(100)
     printers = Registry.list_all()
+    debug_links = Application.get_env(:thermal_print_server, :debug_links, [])
 
     {:ok,
      assign(socket,
        jobs: jobs,
        printers: printers,
+       debug_links: debug_links,
        page_title: "Print Dashboard",
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
        total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
@@ -196,6 +198,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         printers={@printers}
         total_completed={@total_completed}
         total_failed={@total_failed}
+        debug_links={@debug_links}
       />
 
       <.test_job_modal
