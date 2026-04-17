@@ -46,7 +46,7 @@ defmodule ThermalPrintServer.Application do
   end
 
   defp publisher_children do
-    if Application.get_env(:thermal_print_server, :response_topic_arn) do
+    if Application.get_env(:thermal_print_server, :site_id) do
       [ThermalPrintServer.Events.Publisher]
     else
       []

@@ -14,7 +14,6 @@ services:
       - CUPS_URI=ipp://cups:631
       - PRINT_QUEUE_URL=http://goaws:4100/000000000000/thermal-print-queue
       - PRINT_BUCKET=thermal-print-jobs
-      - RESPONSE_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:thermal-events
       - SITE_ID=dev-local
       - SITE_NAME=Dev Workstation
       - HEARTBEAT_INTERVAL=30
@@ -22,7 +21,6 @@ services:
       - AWS_SECRET_ACCESS_KEY=testtest1
       - AWS_REGION=us-east-1
       - AWS_SQS_ENDPOINT=http://goaws:4100
-      - AWS_SNS_ENDPOINT=http://goaws:4100
       - AWS_S3_ENDPOINT=http://minio:9000
     depends_on:
       cups:

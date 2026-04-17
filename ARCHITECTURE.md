@@ -1,6 +1,6 @@
 # Architecture
 
-Elixir/Phoenix service that consumes print jobs from SQS, sends them to thermal printers via CUPS/IPP, and publishes status events to SNS. Supports ZPL and PDF content types with real-time monitoring through a LiveView dashboard.
+Elixir/Phoenix service that consumes print jobs from SQS, sends them to thermal printers via CUPS/IPP, and replies with a job_status message to the requester's SQS queue. Supports ZPL and PDF content types with real-time monitoring through a LiveView dashboard.
 
 ## System Overview
 
@@ -10,14 +10,14 @@ Elixir/Phoenix service that consumes print jobs from SQS, sends them to thermal 
                                   │   ERP / Client App   │
                                   └───────┬──────────────┘
                                           │
-                            SQS message   │   SNS subscription
-                            (print job)   │   (status events)
-                                          ▼
+                            SQS message   │   SQS reply queue
+                            (print job,   │   (job_status)
+                             replyTo URL) ▼
 ┌──────────┐          ┌───────────────────────────────────────────────┐
 │          │  poll    │           Thermal Print Server                │
 │   SQS    │◄─────────┤                                               │
-│  Queue   │──────────►  Broadway ──► Registry ──► Worker ──► CUPS ──►│──► Printer
-│          │          │  Pipeline     lookup       (Hippy)    (IPP)   │
+│ Request  │──────────►  Broadway ──► Registry ──► Worker ──► CUPS ──►│──► Printer
+│  Queue   │          │  Pipeline     lookup       (Hippy)    (IPP)   │
 └──────────┘          │      │                                        │
                       │      ├──► S3Fetcher (large jobs)              │
 ┌──────────┐          │      ├──► Preview (ZPL/PDF)                   │
@@ -28,12 +28,13 @@ Elixir/Phoenix service that consumes print jobs from SQS, sends them to thermal 
 └──────────┘          │              Dashboard    Publisher           │
                       │              (LiveView)   (GenServer)         │
 ┌──────────┐          │                               │               │
-│   SNS    │          │                               │               │
-│  Topic   │◄─────────┤  publish events ──────────────┘               │
-└──────────┘          │                                               │
-                      │  write snapshot                               │
-┌──────────┐          │       │                                       │
-│    S3    │◄─────────┤───────┘                                       │
+│   SQS    │◄─────────┤  send job_status ─────────────┤               │
+│  Reply   │          │  (to replyToQueueUrl)         │               │
+│  Queue   │          │                               │               │
+└──────────┘          │                               │               │
+                      │  write snapshot               │               │
+┌──────────┐          │       │                      │               │
+│    S3    │◄─────────┤───────┴──────────────────────┘                │
 │ Manifest │          └───────────────────────────────────────────────┘
 └──────────┘
 ```
@@ -79,11 +80,11 @@ Preview failures do not fail the job.
 
 ### 7. Track & Notify
 
-`Store.record/2` writes the job to an ETS table (capped at 500 entries, oldest pruned). A PubSub broadcast notifies the dashboard (live update) and the Publisher (SNS event).
+`Store.record/2` writes the job to an ETS table (capped at 500 entries, oldest pruned). A PubSub broadcast notifies the dashboard (live update) and the Publisher. If the original request carried a `replyToQueueUrl`, the Publisher sends a `job_status` message to that queue.
 
 ### 8. Acknowledge
 
-`handle_message/3` always returns the message, so BroadwaySQS auto-acknowledges regardless of success or failure. Failed jobs are tracked in ETS and published to SNS, but the SQS message is removed.
+`handle_message/3` always returns the message, so BroadwaySQS auto-acknowledges regardless of success or failure. Failed jobs are tracked in ETS and the failure is sent to the `replyToQueueUrl` if one was provided, but the SQS request message is removed.
 
 ## Service Integrations
 
@@ -113,26 +114,28 @@ Broadway starts only when `PRINT_QUEUE_URL` is set. The producer uses long-polli
 Two distinct uses:
 
 1. **Job data** — `S3Fetcher` reads objects by key, auto-decompresses `.gz` files. The client is responsible for uploading large payloads before sending the SQS message.
-2. **Printer manifest** — `Publisher` writes `sites/{site_id}/manifest.json` containing the current printer list, site metadata, and queue URL. Updated on startup, printer changes, and each heartbeat.
+2. **Printer manifest** — `Publisher` writes `sites/{site_id}/manifest.json` containing the current printer list, site metadata, and queue URL. Updated on startup, printer changes, and each heartbeat. Consumers use this object's `LastModified` as the site's liveness signal.
 
-### AWS SNS — Event Publishing
+### AWS SQS — Job Status Replies
 
-|              |                                                           |
-| ------------ | --------------------------------------------------------- |
-| **Library**  | `ex_aws_sns` (~> 2.3)                                     |
-| **Protocol** | HTTP REST (AWS SNS API)                                   |
-| **Config**   | `RESPONSE_TOPIC_ARN` env var                              |
-| **Dev mock** | GoAWS on port 4100 (topic subscribed to a response queue) |
+|              |                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| **Library**  | `ex_aws_sqs` (~> 3.4)                                                                           |
+| **Protocol** | HTTP REST (AWS SQS API)                                                                         |
+| **Config**   | Per-request `replyToQueueUrl` in the request message; no static config on the server            |
+| **Dev mock** | GoAWS on port 4100 (`thermal-response-queue`)                                                   |
 
-Publisher starts only when `RESPONSE_TOPIC_ARN` is set. All messages include `site_id` and `event_type` as SNS message attributes for subscriber filtering.
+Publisher starts when `SITE_ID` is set. Each request may carry a `replyToQueueUrl`; on job completion or failure, a `job_status` message is sent to that queue with `site_id` and `event_type` as SQS message attributes. Requests without a `replyToQueueUrl` get no response (fire-and-forget).
 
-**Event types:**
+Printer state and liveness are **not** published as events. Consumers read them from the S3 manifest and use the object's `LastModified` for staleness detection.
 
-| Event            | Trigger                                                    | Key Fields                                           |
-| ---------------- | ---------------------------------------------------------- | ---------------------------------------------------- |
-| `job_status`     | Job completes or fails                                     | `jobId`, `status`, `printer`, `contentType`, `error` |
-| `printer_change` | Registry refresh detects changes                           | `printers` (full list with capabilities)             |
-| `heartbeat`      | Timer (default 60s, configurable via `HEARTBEAT_INTERVAL`) | `printerCount`, `uptimeSeconds`                      |
+**Event types (all sent via SQS to `replyToQueueUrl`):**
+
+| Event        | Trigger                | Key Fields                                           |
+| ------------ | ---------------------- | ---------------------------------------------------- |
+| `job_status` | Job completes or fails | `jobId`, `status`, `printer`, `contentType`, `error` |
+
+**Security note:** the `replyToQueueUrl` is trusted from the message body. IAM should scope the server's `sqs:SendMessage` to an approved queue name pattern (e.g., `thermal-replies-*`) so a compromised or adversarial sender can't redirect replies to an attacker-controlled queue.
 
 ### CUPS/IPP — Printer Management
 
@@ -174,10 +177,12 @@ Application (one_for_one)
 ├── Printer.Registry       — printer name → config map (GenServer, 5-min auto-refresh)
 ├── Endpoint               — Phoenix HTTP on port 4000 (Bandit adapter)
 ├── Broadway.PrintPipeline — SQS consumer + processors (conditional: PRINT_QUEUE_URL)
-└── Events.Publisher       — SNS/S3 event publisher (conditional: RESPONSE_TOPIC_ARN)
+└── Events.Publisher       — SQS reply sender + S3 snapshot writer (conditional: SITE_ID)
 ```
 
 Start order matters: PubSub must be up before Store, Registry, Pipeline, and Publisher. Store and Registry must be up before Pipeline processes messages. Publisher subscribes to PubSub on init and writes the initial S3 manifest.
+
+**Liveness detection for consumers:** the Publisher refreshes `sites/{site_id}/manifest.json` on startup, every printer change, and every heartbeat interval. Consumers check the S3 object's `LastModified` (or the `Date` header on the S3 response) against a staleness threshold — typically 2–3× the heartbeat interval. This uses S3's own clock on both sides, avoiding clock-skew issues between consumer and server.
 
 The `one_for_one` strategy means each child restarts independently. A Store crash loses in-memory job history but processing continues. A Registry crash triggers rediscovery on restart. A Pipeline crash stops message consumption but SQS retains unprocessed messages.
 
@@ -204,7 +209,7 @@ media_default, media_ready
 
 - Automatic: every 5 minutes via `Process.send_after`
 - Manual: dashboard "Refresh" button calls `Registry.refresh_sync/0`
-- On refresh: broadcasts `:printers_updated` to PubSub → dashboard updates, Publisher writes S3 manifest and SNS event
+- On refresh: broadcasts `:printers_updated` to PubSub → dashboard updates and Publisher writes the S3 manifest
 
 ## Jobs Store
 
@@ -266,6 +271,7 @@ Updated on: app startup, printer changes, and each heartbeat.
   "data": "^XA...^XZ",
   "contentType": "application/vnd.zebra.zpl",
   "copies": 1,
+  "replyToQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/thermal-replies",
   "metadata": {
     "labelId": "lbl-1",
     "labelVersion": 3,
@@ -276,36 +282,36 @@ Updated on: app startup, printer changes, and each heartbeat.
 }
 ```
 
-| Field         | Type    | Required                    | Notes                                                      |
-| ------------- | ------- | --------------------------- | ---------------------------------------------------------- |
-| `jobId`       | string  | yes                         | Unique job identifier                                      |
-| `printer`     | string  | yes                         | Must match a registered printer name                       |
-| `data`        | string  | one of `data`/`s3Key`/`zpl` | Inline print data (< 200 KB)                               |
-| `s3Key`       | string  | one of `data`/`s3Key`/`zpl` | S3 key for large jobs; data is gzipped                     |
-| `zpl`         | string  | one of `data`/`s3Key`/`zpl` | Legacy field, treated as ZPL                               |
-| `contentType` | string  | no                          | `application/vnd.zebra.zpl` (default) or `application/pdf` |
-| `copies`      | integer | no                          | Positive integer, defaults to 1                            |
-| `metadata`    | object  | no                          | Passed through to tracking and events                      |
+| Field             | Type    | Required                    | Notes                                                                         |
+| ----------------- | ------- | --------------------------- | ----------------------------------------------------------------------------- |
+| `jobId`           | string  | yes                         | Unique job identifier                                                         |
+| `printer`         | string  | yes                         | Must match a registered printer name                                          |
+| `data`            | string  | one of `data`/`s3Key`/`zpl` | Inline print data (< 200 KB)                                                  |
+| `s3Key`           | string  | one of `data`/`s3Key`/`zpl` | S3 key for large jobs; data is gzipped                                        |
+| `zpl`             | string  | one of `data`/`s3Key`/`zpl` | Legacy field, treated as ZPL                                                  |
+| `contentType`     | string  | no                          | `application/vnd.zebra.zpl` (default) or `application/pdf`                    |
+| `copies`          | integer | no                          | Positive integer, defaults to 1                                               |
+| `replyToQueueUrl` | string  | no                          | SQS queue URL for the `job_status` response; omit for fire-and-forget         |
+| `metadata`        | object  | no                          | Passed through to tracking                                                    |
 
-## SNS Event Format
+## Job Status Response Format
 
-All events include these top-level fields:
+Sent as an SQS message to the request's `replyToQueueUrl`:
 
 ```json
 {
   "siteId": "warehouse-dock-1",
-  "eventType": "job_status|printer_change|heartbeat",
+  "eventType": "job_status",
+  "jobId": "abc-123",
+  "status": "completed",
+  "printer": "TestZebra-4x6",
+  "contentType": "application/vnd.zebra.zpl",
+  "error": null,
   "timestamp": "2026-04-11T10:30:45Z"
 }
 ```
 
-**job_status** adds: `jobId`, `status` ("completed"/"failed"), `printer`, `contentType`, `error`
-
-**printer_change** adds: `printers` (full array with capabilities)
-
-**heartbeat** adds: `printerCount`, `uptimeSeconds`
-
-SNS message attributes (`site_id`, `event_type`) enable subscriber-side filtering.
+`status` is `"completed"` or `"failed"`. `error` is populated on failure, `null` on success. SQS message attributes (`site_id`, `event_type`) are set so consumers reading a shared reply queue can filter without parsing the body.
 
 ## Local Development
 
@@ -315,7 +321,7 @@ Docker Compose runs four services:
 | ------- | -------------- | ---------- | -------------------------------------------------- |
 | `app`   | Elixir 1.18    | 4000       | Phoenix dev server with live reload                |
 | `cups`  | Debian + CUPS  | 631        | Test printers (TestZebra-4x6, 4x2, Capture)        |
-| `goaws` | pafortin/goaws | 4100       | SQS + SNS mock (queue + topic + subscription)      |
+| `goaws` | pafortin/goaws | 4100       | SQS mock (request queue + response queue)          |
 | `minio` | minio/minio    | 9000, 9001 | S3-compatible storage (bucket: thermal-print-jobs) |
 
 A `minio-init` sidecar creates the bucket on first start. The app container waits for CUPS (healthcheck) and MinIO (healthcheck) before starting.
@@ -329,6 +335,6 @@ Multi-stage Dockerfile:
 1. **Build** (elixir:1.18) — deps, compile, asset deploy, release
 2. **Runtime** (debian:bookworm-slim) — minimal OS with the release binary
 
-Expects real AWS services (SQS, S3, SNS) and either a CUPS server or static printer config. Supports Kubernetes clustering via `DNS_CLUSTER_QUERY`.
+Expects real AWS services (SQS, S3) and either a CUPS server or static printer config. Supports Kubernetes clustering via `DNS_CLUSTER_QUERY`.
 
 Required env vars: `SECRET_KEY_BASE`, `PRINT_QUEUE_URL`, `PHX_HOST`, `PHX_SERVER=true`. See the Configuration section in CLAUDE.md for the full list.

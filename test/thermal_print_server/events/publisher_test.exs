@@ -4,17 +4,21 @@ defmodule ThermalPrintServer.Events.PublisherTest do
   alias ThermalPrintServer.Events.Publisher
 
   setup do
-    # Don't start the publisher via the app supervisor — we start it manually
-    original_topic = Application.get_env(:thermal_print_server, :response_topic_arn)
     original_site = Application.get_env(:thermal_print_server, :site_id)
     original_heartbeat = Application.get_env(:thermal_print_server, :heartbeat_interval)
     original_bucket = Application.get_env(:thermal_print_server, :print_bucket)
 
-    Application.put_env(
-      :thermal_print_server,
-      :response_topic_arn,
-      "arn:aws:sns:us-east-1:000000000000:test"
-    )
+    # Stop the app-supervised Publisher (started from dev env) so each test
+    # can bring up a fresh one with the test-specific config below.
+    if pid = Process.whereis(Publisher) do
+      ref = Process.monitor(pid)
+      Supervisor.terminate_child(ThermalPrintServer.Supervisor, Publisher)
+      receive do
+        {:DOWN, ^ref, :process, ^pid, _} -> :ok
+      after
+        500 -> :ok
+      end
+    end
 
     Application.put_env(:thermal_print_server, :site_id, "test-site")
     Application.put_env(:thermal_print_server, :heartbeat_interval, 3600)
@@ -22,10 +26,6 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     Application.delete_env(:thermal_print_server, :print_bucket)
 
     on_exit(fn ->
-      if original_topic,
-        do: Application.put_env(:thermal_print_server, :response_topic_arn, original_topic),
-        else: Application.delete_env(:thermal_print_server, :response_topic_arn)
-
       if original_site,
         do: Application.put_env(:thermal_print_server, :site_id, original_site),
         else: Application.delete_env(:thermal_print_server, :site_id)
@@ -43,34 +43,53 @@ defmodule ThermalPrintServer.Events.PublisherTest do
   end
 
   test "starts and subscribes to PubSub channels" do
-    # If the publisher can start, it has subscribed to PubSub
     pid = start_supervised!({Publisher, []})
     assert Process.alive?(pid)
   end
 
-  test "builds correct job_status event structure" do
+  test "handles completed job with reply_to_queue_url" do
     start_supervised!({Publisher, []})
 
-    # Broadcast a completed job — the publisher will try to publish to SNS
-    # which will fail (no SNS in test), but we can verify it doesn't crash
+    # Job with a reply queue — Publisher will try to send via SQS,
+    # which fails in test (no SQS endpoint), but the Publisher must stay alive.
     Phoenix.PubSub.broadcast(
       ThermalPrintServer.PubSub,
       "print_jobs",
       {:job_updated, "test-job-123",
-       %{status: :completed, printer: "TestPrinter", content_type: "application/vnd.zebra.zpl"}}
+       %{
+         status: :completed,
+         printer: "TestPrinter",
+         content_type: "application/vnd.zebra.zpl",
+         reply_to_queue_url: "http://localhost:4100/000000000000/replies"
+       }}
     )
 
-    # Give the publisher time to process
     Process.sleep(50)
+    assert Process.whereis(Publisher) |> Process.alive?()
+  end
 
-    # Publisher should still be alive (handles SNS errors gracefully)
+  test "skips completed job when reply_to_queue_url is nil" do
+    start_supervised!({Publisher, []})
+
+    Phoenix.PubSub.broadcast(
+      ThermalPrintServer.PubSub,
+      "print_jobs",
+      {:job_updated, "test-job-no-reply",
+       %{
+         status: :completed,
+         printer: "TestPrinter",
+         content_type: "application/vnd.zebra.zpl",
+         reply_to_queue_url: nil
+       }}
+    )
+
+    Process.sleep(50)
     assert Process.whereis(Publisher) |> Process.alive?()
   end
 
   test "ignores non-terminal job statuses" do
     start_supervised!({Publisher, []})
 
-    # Broadcast a non-terminal status
     Phoenix.PubSub.broadcast(
       ThermalPrintServer.PubSub,
       "print_jobs",
@@ -81,7 +100,7 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     assert Process.whereis(Publisher) |> Process.alive?()
   end
 
-  test "handles printers_updated events" do
+  test "handles printers_updated events (S3 snapshot only)" do
     start_supervised!({Publisher, []})
 
     printers = [
@@ -98,7 +117,7 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     assert Process.whereis(Publisher) |> Process.alive?()
   end
 
-  test "handles heartbeat" do
+  test "handles heartbeat (S3 snapshot only)" do
     start_supervised!({Publisher, []})
 
     send(Process.whereis(Publisher), :heartbeat)

@@ -59,6 +59,19 @@ defmodule ThermalPrintServer.Broadway.MessageParserTest do
       assert parsed.metadata.label_id == nil
     end
 
+    test "parses replyToQueueUrl when present" do
+      url = "https://sqs.us-east-1.amazonaws.com/123456789012/thermal-replies"
+      json = @valid_message |> Map.put("replyToQueueUrl", url) |> Jason.encode!()
+      assert {:ok, parsed} = MessageParser.parse(json)
+      assert parsed.reply_to_queue_url == url
+    end
+
+    test "reply_to_queue_url defaults to nil when omitted" do
+      json = Jason.encode!(@valid_message)
+      assert {:ok, parsed} = MessageParser.parse(json)
+      assert parsed.reply_to_queue_url == nil
+    end
+
     test "accepts legacy zpl field for backward compatibility" do
       json =
         @valid_message
@@ -170,6 +183,11 @@ defmodule ThermalPrintServer.Broadway.MessageParserTest do
         |> Jason.encode!()
 
       assert {:error, "missing required field: data or s3Key"} = MessageParser.parse(json)
+    end
+
+    test "rejects non-string replyToQueueUrl" do
+      json = @valid_message |> Map.put("replyToQueueUrl", 42) |> Jason.encode!()
+      assert {:error, "replyToQueueUrl must be a string"} = MessageParser.parse(json)
     end
   end
 

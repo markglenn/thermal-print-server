@@ -138,6 +138,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
         content_type: parsed.content_type,
         copies: parsed.copies,
         page_count: count_pages(parsed),
+        reply_to_queue_url: parsed.reply_to_queue_url,
         status: :completed
       }
       |> maybe_merge(preview)
@@ -156,13 +157,13 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   @spec track_failure(String.t(), term()) :: :ok | {:error, term()}
   defp track_failure(raw_data, reason) do
-    job_id =
+    {job_id, reply_to_queue_url} =
       case Jason.decode(raw_data) do
-        {:ok, %{"jobId" => id}} -> id
-        _ -> "unknown-#{System.unique_integer([:positive])}"
+        {:ok, %{"jobId" => id} = decoded} -> {id, decoded["replyToQueueUrl"]}
+        _ -> {"unknown-#{System.unique_integer([:positive])}", nil}
       end
 
-    attrs = %{status: :failed, error: inspect(reason)}
+    attrs = %{status: :failed, error: inspect(reason), reply_to_queue_url: reply_to_queue_url}
     Store.record(job_id, attrs)
 
     Phoenix.PubSub.broadcast(

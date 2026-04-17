@@ -11,8 +11,8 @@ SQS --> Broadway Pipeline --> [S3 fetch if needed] --> IPP (Hippy) --> CUPS --> 
                                                             |
                                                   LiveView Dashboard
 
-Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
-                 ---> S3 printer snapshot (sites/{site_id}/printers.json)
+Events.Publisher ---> SQS (job_status -> per-request replyToQueueUrl)
+                 ---> S3 printer snapshot (sites/{site_id}/manifest.json)
 ```
 
 - **Broadway** consumes from SQS with backpressure and batching
@@ -21,6 +21,7 @@ Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
 - **S3** stores large jobs (>200 KB); client gzips and uploads, server fetches and decompresses
 - **Preview** renders ZPL via Labelary API or passes PDF through for dashboard display
 - **LiveView dashboard** at `/` shows real-time job status, printer info, and label previews
+- **Responses** are per-request: each SQS message may carry a `replyToQueueUrl`; job_status is sent there on completion. Printer state and liveness are read passively from the S3 manifest (`updatedAt` / object `LastModified`).
 
 ## SQS Message Format
 
@@ -33,6 +34,7 @@ Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
   "data": "^XA...^XZ",
   "contentType": "application/vnd.zebra.zpl",
   "copies": 1,
+  "replyToQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/thermal-replies",
   "metadata": {
     "labelId": "lbl-1",
     "labelVersion": 3,
@@ -44,6 +46,7 @@ Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
 - `contentType` — `application/vnd.zebra.zpl` (default) or `application/pdf`
 - `data` — inline print data (for jobs <200 KB)
 - `s3Key` — S3 key for large jobs (mutually exclusive with `data`); data is gzipped
+- `replyToQueueUrl` — optional SQS queue URL; if set, a `job_status` message is sent there on completion or failure. Note: IAM should scope the server's `sqs:SendMessage` to an approved queue name pattern so a bad actor with write access to the request queue can't redirect replies.
 - Legacy `zpl` field is accepted for backward compatibility
 
 ## Key Modules
@@ -58,14 +61,14 @@ Events.Publisher ---> SNS Topic (fan-out to ERP, label editor, etc.)
 - `Printer.CupsDiscovery` — Discovers printers from CUPS via IPP `GetPrinters` + `GetPrinterAttributes`
 - `Printer.Worker` — Sends print data via Hippy, sets IPP document format per content type
 - `Printer.Labelary` — Renders ZPL to PNG via Labelary API
-- `Events.Publisher` — Publishes job status, printer changes, and heartbeats to SNS; writes printer snapshots to S3
+- `Events.Publisher` — Sends job_status responses to the job's `replyToQueueUrl`; writes printer snapshots to S3 on startup, printer changes, and each heartbeat
 
 ## Development
 
 Development uses Docker Compose with a devcontainer:
 
 - **CUPS container** — runs test printers (`TestZebra-4x6`, `TestZebra-4x2`, `TestZebra-Capture`)
-- **goaws container** — local SQS + SNS mock (replaces ElasticMQ), with a response queue subscribed to the SNS topic
+- **goaws container** — local SQS mock (request queue + response queue)
 - **App container** — Elixir with live reload, auto-discovers printers from CUPS
 
 Start with `docker compose up --build` or open in VS Code via **Dev Containers: Reopen in Container**.
@@ -79,10 +82,9 @@ All runtime config via environment variables in `runtime.exs`:
 - `PRINT_QUEUE_URL` — SQS queue (Broadway only starts when set)
 - `PRINT_BUCKET` — S3 bucket for large jobs
 - `PRINTER_N_NAME` / `PRINTER_N_URI` — static printer definitions (merged with CUPS discovery)
-- `RESPONSE_TOPIC_ARN` — SNS topic for outbound events (Publisher only starts when set)
-- `SITE_ID` — identifies this print server instance (required when `RESPONSE_TOPIC_ARN` is set)
+- `SITE_ID` — identifies this print server instance (required to start the Publisher)
 - `SITE_NAME` — human-readable site name (e.g., "Denver Warehouse"); defaults to `SITE_ID`
-- `HEARTBEAT_INTERVAL` — seconds between heartbeat events (default 60)
+- `HEARTBEAT_INTERVAL` — seconds between S3 snapshot refreshes (default 60); consumers use the object's `LastModified` for liveness
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
 
 ## Commands

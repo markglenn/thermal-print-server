@@ -9,9 +9,9 @@ You need access to:
 | Resource | How to get it |
 |----------|---------------|
 | **S3 bucket** | Shared bucket for manifests and large jobs. Configured per environment. |
-| **SNS topic ARN** | The print server publishes events here. Subscribe your own SQS queue to receive them. |
-| **AWS credentials** | IAM credentials with permissions for `sqs:SendMessage`, `sqs:ReceiveMessage`, `s3:GetObject`, `s3:ListBucket`, `sns:Subscribe`. |
-| **AWS region** | All resources (SQS, SNS, S3) are in the same region. |
+| **Reply SQS queue** | An SQS queue you own. The print server writes `job_status` responses here; you poll it. Create it once at startup and reuse for all requests. |
+| **AWS credentials** | IAM credentials with permissions for `sqs:SendMessage` (request queue), `sqs:ReceiveMessage` and `sqs:DeleteMessage` (reply queue), `s3:GetObject`, `s3:ListBucket`. |
+| **AWS region** | All resources (SQS, S3) are in the same region. |
 
 These values are environment-specific. Your infrastructure team or deployment configuration provides them.
 
@@ -78,9 +78,17 @@ All fields except `name` are optional. Availability depends on the printer's CUP
 | `media_default` | string | Default loaded media (e.g., `"oe_4x6-label_4x6in"`) |
 | `media_ready` | array | Currently loaded media sizes |
 
-### Freshness
+### Freshness and liveness
 
-The manifest is rewritten on every heartbeat (default 60s) and on every printer change. If `updatedAt` is older than a few minutes, the site may be offline.
+The manifest is rewritten on every heartbeat (default 60s) and on every printer change. Use the **S3 object's `LastModified`** (from the `HeadObject` or `GetObject` response), not the `updatedAt` in the JSON, to determine staleness. Both `LastModified` and the `Date` response header come from S3's own clock, so you avoid any clock-skew issue between the print server and your client.
+
+**Recommended staleness check:**
+
+```
+offline = s3_response.Date - object.LastModified > 2 × heartbeat_interval
+```
+
+With a 60s heartbeat, consider a site offline after ~3 minutes of no updates. This tolerates one missed write without false alarms.
 
 Consider setting an S3 lifecycle rule on the `sites/` prefix to expire manifests after 24 hours. Live servers continuously refresh their manifest, so only dead servers' manifests will age out.
 
@@ -99,6 +107,7 @@ Send a JSON message to the site's `queueUrl` (from the manifest) via SQS.
   "data": "^XA^FO50,50^A0N,40,40^FDHello World^FS^XZ",
   "contentType": "application/vnd.zebra.zpl",
   "copies": 1,
+  "replyToQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789/thermal-replies",
   "metadata": {
     "labelId": "lbl-1",
     "labelVersion": 3,
@@ -121,6 +130,7 @@ Send a JSON message to the site's `queueUrl` (from the manifest) via SQS.
 | `s3Key` | * | string | S3 object key for large jobs. Mutually exclusive with `data`. |
 | `contentType` | No | string | `"application/vnd.zebra.zpl"` (default) or `"application/pdf"` |
 | `copies` | No | integer | Number of copies. Default `1`. |
+| `replyToQueueUrl` | No | string | SQS queue URL for the `job_status` response. Omit for fire-and-forget — no status will be sent. |
 | `metadata` | No | object | Arbitrary key-value pairs. Stored with the job but not returned in status events. |
 
 \* Either `data` or `s3Key` is required, not both.
@@ -128,6 +138,12 @@ Send a JSON message to the site's `queueUrl` (from the manifest) via SQS.
 ### Job ID
 
 The `jobId` is **client-generated**. Generate a UUID (v4) before sending and store it locally. This is how you correlate `job_status` events back to your job. The print server echoes it back unchanged.
+
+### Reply queue
+
+The `replyToQueueUrl` is the SQS queue where the print server will send the `job_status` response. Create this queue once at client startup (or provision it via infrastructure) and reuse it for all your requests. Do **not** create a new queue per request.
+
+If you omit `replyToQueueUrl`, the server treats the job as fire-and-forget — it will still process the job, but no status response is sent.
 
 ### Large jobs (>200 KB)
 
@@ -151,44 +167,20 @@ The `.gz` extension is required — the print server uses it to know to decompre
 
 All failures are reported via `job_status` events if the `jobId` could be parsed from the message. If the message is completely unparseable, no event is published.
 
-## Listen for Events
+## Receive Job Status
 
-The print server publishes events to an SNS topic. To receive them:
+The print server sends a `job_status` SQS message to the `replyToQueueUrl` you included in the request. Use [long polling](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-short-and-long-polling.html) (`WaitTimeSeconds=20`) on your reply queue — it avoids empty receives and is AWS-recommended.
 
-1. Create an SQS queue for your application
-2. Subscribe your queue to the SNS topic ARN
-3. Optionally set an SNS filter policy to limit which events you receive
-4. Poll your SQS queue for messages
+### SQS message attributes
 
-### SNS message attributes
-
-Every event includes these attributes for SNS filter policies:
+Every response sets these attributes so you can filter without parsing the body:
 
 | Attribute | Type | Possible values |
 |-----------|------|-----------------|
 | `site_id` | String | Site ID (e.g., `"warehouse-denver"`) |
-| `event_type` | String | `"job_status"`, `"printer_change"`, `"heartbeat"` |
+| `event_type` | String | `"job_status"` |
 
-### Filter policy examples
-
-Only receive events from one site:
-```json
-{ "site_id": ["warehouse-denver"] }
-```
-
-Only receive job status events:
-```json
-{ "event_type": ["job_status"] }
-```
-
-Only receive job results from a specific site:
-```json
-{ "site_id": ["warehouse-denver"], "event_type": ["job_status"] }
-```
-
-### Event: job_status
-
-Published when a print job completes or fails.
+### job_status body
 
 ```json
 {
@@ -214,61 +206,36 @@ Published when a print job completes or fails.
 | `error` | string/null | Error description if failed, `null` if completed |
 | `timestamp` | string | ISO 8601 timestamp |
 
-**Note:** The `metadata` object from the original print job is **not** included in status events. Use the `jobId` to join status events with your local job records.
+**Note:** The `metadata` object from the original print job is **not** included in status responses. Use the `jobId` to join status messages with your local job records.
 
-### Event: printer_change
+## Site Liveness and Printer State
 
-Published when printers are added, removed, or change state at a site.
+There is no heartbeat or printer_change event stream. Both live in the S3 manifest:
 
-```json
-{
-  "siteId": "warehouse-denver",
-  "eventType": "printer_change",
-  "printers": [
-    { "name": "ZebraZD420-Dock3", "state": 3 },
-    { "name": "ZebraZD620-Office", "state": 3 }
-  ],
-  "timestamp": "2026-04-05T22:15:00.000000Z"
-}
-```
+- **Printer changes**: re-read `sites/{siteId}/manifest.json` periodically (e.g., every 60s). Replace your cached printer list entirely from the response.
+- **Site liveness**: compare the S3 object's `LastModified` against the `Date` response header (both from S3's clock). If the gap exceeds ~2–3× the site's heartbeat interval, treat the site as offline.
 
-This is the **full printer list** for the site, not a diff. Replace your cached list entirely.
-
-### Event: heartbeat
-
-Published periodically (default every 60s). Indicates the site is online.
-
-```json
-{
-  "siteId": "warehouse-denver",
-  "eventType": "heartbeat",
-  "printerCount": 3,
-  "uptimeSeconds": 3600,
-  "timestamp": "2026-04-05T22:15:00.000000Z"
-}
-```
-
-Use this to detect offline sites. If heartbeats stop arriving for a site, it's likely down.
+See the [Freshness and liveness](#freshness-and-liveness) section above for the recommended check.
 
 ## Recommended Client Architecture
 
 ### On boot
 
-1. List `sites/` in S3 to discover all sites
-2. Read `manifest.json` for each site you care about
-3. Cache the printer lists and queue URLs locally
-4. Start polling your SNS-subscribed SQS queue for events
+1. Create (or look up) your SQS reply queue
+2. List `sites/` in S3 to discover all sites
+3. Read each `manifest.json`; cache printer lists, queue URLs, and `LastModified` per site
+4. Start long-polling your reply queue
 
 ### Sending a job
 
 1. Generate a UUID v4 for `jobId`
 2. Store `{ jobId, status: "pending", printer, siteId, submittedAt }` in your local job tracker
-3. Send the SQS message to the site's `queueUrl`
-4. When a `job_status` event arrives matching your `jobId`, update the local record
+3. Send the SQS request to the site's `queueUrl`, including your reply queue's URL as `replyToQueueUrl`
+4. When a `job_status` message arrives matching your `jobId`, update the local record and delete the SQS message
 5. Clean up completed/failed jobs from the tracker after a retention period
 
 ### Staying current
 
-- **Printer changes**: Replace your cached printer list when you receive a `printer_change` event for a site
-- **Site health**: Track the last heartbeat timestamp per site. If no heartbeat arrives for >2 minutes, consider the site offline
-- **Manifest refresh**: Re-read `manifest.json` if the `printerCount` in a heartbeat differs from your cached printer list, or periodically (e.g., every 5 minutes)
+- **Printer state**: re-read `sites/*/manifest.json` on a periodic cadence (60s is fine) and replace your cached printer list
+- **Site health**: on each manifest read, check `S3-Date - object.LastModified`; flag a site offline if the gap exceeds ~2–3× the heartbeat interval
+- **No event subscription is needed** for state or liveness — polling the manifest covers both

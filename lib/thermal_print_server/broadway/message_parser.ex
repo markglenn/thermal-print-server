@@ -15,6 +15,7 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
           s3_key: String.t() | nil,
           content_type: String.t(),
           copies: pos_integer(),
+          reply_to_queue_url: String.t() | nil,
           metadata: %{
             label_id: String.t(),
             label_version: pos_integer(),
@@ -91,6 +92,9 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
       Map.has_key?(map, "contentType") and map["contentType"] not in @valid_content_types ->
         {:error, "contentType must be one of: #{Enum.join(@valid_content_types, ", ")}"}
 
+      Map.has_key?(map, "replyToQueueUrl") and not is_binary(map["replyToQueueUrl"]) ->
+        {:error, "replyToQueueUrl must be a string"}
+
       true ->
         :ok
     end
@@ -111,6 +115,7 @@ defmodule ThermalPrintServer.Broadway.MessageParser do
       s3_key: map["s3Key"],
       content_type: content_type,
       copies: map["copies"] || 1,
+      reply_to_queue_url: map["replyToQueueUrl"],
       metadata: %{
         label_id: metadata["labelId"],
         label_version: metadata["labelVersion"],
