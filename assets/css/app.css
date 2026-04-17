@@ -459,6 +459,10 @@
   transition: background 0.15s;
 }
 
+.job-row-clickable {
+  cursor: pointer;
+}
+
 .job-row:hover {
   background: rgba(0, 0, 0, 0.02);
 }

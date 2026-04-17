@@ -364,7 +364,9 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
             <tr
               :for={job <- filtered_jobs(@jobs, @filter_device, @filter_status, @filter_time)}
               id={"job-#{job.job_id}"}
-              class={"job-row #{status_row_class(job[:status])}"}
+              class={"job-row job-row-clickable #{status_row_class(job[:status])}"}
+              phx-click="show_preview"
+              phx-value-job-id={job.job_id}
             >
               <td class="td-status">
                 <.status_indicator status={job[:status]} />
@@ -377,14 +379,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
               <td class="td-qty">{job[:page_count] || job[:copies] || 1}</td>
               <td class="td-time">{format_time(job.timestamp)}</td>
               <td class="td-preview">
-                <button
-                  :if={job[:preview_data]}
-                  class="preview-btn"
-                  phx-click="show_preview"
-                  phx-value-job-id={job.job_id}
-                >
-                  VIEW
-                </button>
+                <span :if={job[:preview_data]} class="preview-btn">VIEW</span>
               </td>
             </tr>
           </tbody>
@@ -430,8 +425,18 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
             <dt>PAGES</dt>
             <dd>{@job[:page_count] || @job[:copies] || 1}</dd>
 
+            <dt :if={(@job[:copies] || 1) > 1}>COPIES</dt>
+            <dd :if={(@job[:copies] || 1) > 1}>
+              {@job[:copies]}{copies_suffix(@job)}
+            </dd>
+
             <dt>TIME</dt>
             <dd>{format_time(@job[:timestamp])}</dd>
+
+            <dt :if={@job[:reply_to_queue_url]}>REPLY QUEUE</dt>
+            <dd :if={@job[:reply_to_queue_url]} class="printer-detail-mono">
+              {@job[:reply_to_queue_url]}
+            </dd>
 
             <dt :if={@job[:error]}>ERROR</dt>
             <dd :if={@job[:error]} class="job-detail-error">{@job[:error]}</dd>
@@ -701,6 +706,16 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   defp format_media_list(media) when is_list(media), do: Enum.join(media, ", ")
   defp format_media_list(media) when is_binary(media), do: media
   defp format_media_list(_), do: "\u2014"
+
+  defp copies_suffix(job) do
+    copies = job[:copies] || 1
+    pages = job[:page_count] || copies
+
+    case {copies, div(pages, max(copies, 1))} do
+      {c, labels} when c > 1 and labels > 1 -> " \u00d7 #{labels} label(s) = #{pages} page(s)"
+      _ -> ""
+    end
+  end
 
   defp job_device_names(jobs) do
     jobs
