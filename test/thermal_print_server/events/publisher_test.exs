@@ -37,6 +37,9 @@ defmodule ThermalPrintServer.Events.PublisherTest do
       if original_bucket,
         do: Application.put_env(:thermal_print_server, :print_bucket, original_bucket),
         else: Application.delete_env(:thermal_print_server, :print_bucket)
+
+      # Bring the app-supervised Publisher back so later tests see it running.
+      Supervisor.restart_child(ThermalPrintServer.Supervisor, Publisher)
     end)
 
     :ok
