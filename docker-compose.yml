@@ -10,7 +10,6 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - MIX_ENV=dev
       - CUPS_URI=ipp://cups:631
       - PRINT_QUEUE_URL=http://elasticmq:9324/000000000000/thermal-print-queue
       - PRINT_BUCKET=thermal-print-jobs
