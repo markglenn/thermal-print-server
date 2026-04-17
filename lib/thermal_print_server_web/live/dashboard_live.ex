@@ -25,6 +25,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
        page_title: "Print Dashboard",
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
        total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
+       total_blocked: Enum.count(jobs, &(&1[:status] == :blocked)),
        test_data: TestJob.sample_zpl(),
        test_content_type: "application/vnd.zebra.zpl",
        test_label_size: "4x6",
@@ -56,7 +57,8 @@ defmodule ThermalPrintServerWeb.DashboardLive do
      assign(socket,
        jobs: jobs,
        total_completed: Enum.count(jobs, &(&1[:status] == :completed)),
-       total_failed: Enum.count(jobs, &(&1[:status] == :failed))
+       total_failed: Enum.count(jobs, &(&1[:status] == :failed)),
+       total_blocked: Enum.count(jobs, &(&1[:status] == :blocked))
      )}
   end
 
@@ -152,6 +154,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
            jobs: [],
            total_completed: 0,
            total_failed: 0,
+           total_blocked: 0,
            preview_job: nil
          )}
     end
@@ -198,6 +201,7 @@ defmodule ThermalPrintServerWeb.DashboardLive do
         printers={@printers}
         total_completed={@total_completed}
         total_failed={@total_failed}
+        total_blocked={@total_blocked}
         debug_links={@debug_links}
       />
 

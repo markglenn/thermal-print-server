@@ -89,6 +89,8 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
   defp extract_capabilities(attrs) do
     %{}
     |> maybe_put(:state, parse_state(attrs["printer-state"]))
+    |> maybe_put(:state_reasons, parse_state_reasons(attrs["printer-state-reasons"]))
+    |> maybe_put(:state_message, parse_state_message(attrs["printer-state-message"]))
     |> maybe_put(:info, attrs["printer-info"])
     |> maybe_put(:location, attrs["printer-location"])
     |> maybe_put(:resolution, parse_resolution(attrs["printer-resolution-supported"]))
@@ -102,6 +104,27 @@ defmodule ThermalPrintServer.Printer.CupsDiscovery do
   defp parse_state(:processing), do: 4
   defp parse_state(:stopped), do: 5
   defp parse_state(_), do: nil
+
+  # "none" is CUPS's way of saying no active reason; drop it so callers can
+  # treat a populated list as "there's a problem."
+  defp parse_state_reasons(nil), do: nil
+  defp parse_state_reasons("none"), do: nil
+  defp parse_state_reasons(""), do: nil
+  defp parse_state_reasons(reason) when is_binary(reason), do: [reason]
+
+  defp parse_state_reasons(reasons) when is_list(reasons) do
+    case Enum.reject(reasons, &(&1 in [nil, "", "none"])) do
+      [] -> nil
+      filtered -> filtered
+    end
+  end
+
+  defp parse_state_reasons(_), do: nil
+
+  defp parse_state_message(nil), do: nil
+  defp parse_state_message(""), do: nil
+  defp parse_state_message(msg) when is_binary(msg), do: msg
+  defp parse_state_message(_), do: nil
 
   defp parse_resolution(%Hippy.PrintResolution{xfeed: x, feed: y, unit: unit}) do
     %{x: x, y: y, unit: unit}

@@ -226,6 +226,7 @@
 
 .stat-good { color: var(--th-green); }
 .stat-bad { color: var(--th-red); }
+.stat-warn { color: var(--th-amber); }
 .stat-neutral { color: var(--th-text-dim); }
 .stat-time { color: var(--th-amber); font-variant-numeric: tabular-nums; }
 
@@ -479,6 +480,24 @@
   background: rgba(40, 100, 184, 0.04);
 }
 
+.row-blocked {
+  background: rgba(196, 122, 24, 0.06);
+}
+
+.row-blocked:hover {
+  background: rgba(196, 122, 24, 0.10);
+}
+
+.row-canceled {
+  background: rgba(0, 0, 0, 0.02);
+  opacity: 0.75;
+}
+
+.row-canceled:hover {
+  background: rgba(0, 0, 0, 0.05);
+  opacity: 1;
+}
+
 /* -- Status indicator -- */
 .status-indicator {
   display: flex;
@@ -531,6 +550,30 @@
 }
 
 .status-printing .status-text { color: var(--th-blue); }
+
+.status-blocked .status-dot {
+  background: var(--th-amber);
+  box-shadow: 0 0 5px rgba(196, 122, 24, 0.4);
+  animation: blink-amber 1.5s ease-in-out infinite;
+}
+
+@keyframes blink-amber {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-blocked .status-text { color: var(--th-amber); }
+
+.status-canceled .status-dot {
+  background: var(--th-text-dim);
+  border: 1px solid var(--th-text-dim);
+  background-color: transparent;
+}
+
+.status-canceled .status-text {
+  color: var(--th-text-dim);
+  text-decoration: line-through;
+}
 
 .status-queued .status-dot {
   background: var(--th-text-dim);
@@ -1162,11 +1205,35 @@
   text-overflow: ellipsis;
 }
 
+.printers-panel-row-reasons {
+  display: block;
+  font-size: 10px;
+  color: var(--th-amber);
+  font-family: var(--th-font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .printers-panel-row-state {
   font-size: 9px;
   letter-spacing: 1px;
   color: var(--th-text-muted);
   flex-shrink: 0;
+}
+
+.printers-panel-row-unhealthy {
+  background: rgba(196, 122, 24, 0.06);
+}
+
+.printers-panel-row-unhealthy:hover {
+  background: rgba(196, 122, 24, 0.10);
+}
+
+.printers-panel-row-dot.dot-unhealthy {
+  background: var(--th-amber);
+  box-shadow: 0 0 5px rgba(196, 122, 24, 0.4);
+  animation: blink-amber 1.5s ease-in-out infinite;
 }
 
 .printers-panel-empty {

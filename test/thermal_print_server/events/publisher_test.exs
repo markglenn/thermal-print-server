@@ -13,6 +13,7 @@ defmodule ThermalPrintServer.Events.PublisherTest do
     if pid = Process.whereis(Publisher) do
       ref = Process.monitor(pid)
       Supervisor.terminate_child(ThermalPrintServer.Supervisor, Publisher)
+
       receive do
         {:DOWN, ^ref, :process, ^pid, _} -> :ok
       after

@@ -60,16 +60,18 @@ defmodule ThermalPrintServer.Events.Publisher do
 
   @impl true
   def handle_info({:job_updated, job_id, attrs}, state) do
-    with true <- attrs[:status] in [:completed, :failed],
+    with true <- attrs[:status] in [:completed, :failed, :blocked, :canceled],
          queue_url when is_binary(queue_url) <- attrs[:reply_to_queue_url] do
       event = %{
         siteId: state.site_id,
         eventType: "job_status",
         jobId: job_id,
-        status: to_string(attrs[:status]),
+        status: wire_status(attrs[:status]),
+        terminalState: to_string(attrs[:status]),
         printer: attrs[:printer],
         contentType: attrs[:content_type],
         error: attrs[:error],
+        stateReasons: attrs[:cups_job_state_reasons],
         timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
@@ -172,10 +174,19 @@ defmodule ThermalPrintServer.Events.Publisher do
     end
   end
 
+  # Clients only recognise "completed" and "failed" on the wire. Dashboard-only
+  # sub-statuses (:canceled, :blocked) are collapsed to "failed" so existing
+  # consumers keep working; the precise state travels in `terminalState` and
+  # `stateReasons` for clients that want to distinguish.
+  defp wire_status(:completed), do: "completed"
+  defp wire_status(_), do: "failed"
+
   defp sanitize_printer(printer) do
     Map.take(printer, [
       :name,
       :state,
+      :state_reasons,
+      :state_message,
       :info,
       :location,
       :resolution,

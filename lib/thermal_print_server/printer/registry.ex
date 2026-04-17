@@ -9,7 +9,7 @@ defmodule ThermalPrintServer.Printer.Registry do
 
   require Logger
 
-  @refresh_interval :timer.minutes(5)
+  @default_refresh_interval_s 60
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -88,7 +88,14 @@ defmodule ThermalPrintServer.Printer.Registry do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :scheduled_refresh, @refresh_interval)
+    interval_s =
+      Application.get_env(
+        :thermal_print_server,
+        :printer_refresh_interval,
+        @default_refresh_interval_s
+      )
+
+    Process.send_after(self(), :scheduled_refresh, :timer.seconds(interval_s))
   end
 
   defp broadcast_update(printers) do

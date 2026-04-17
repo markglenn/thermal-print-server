@@ -9,7 +9,7 @@ defmodule ThermalPrintServer.Printer.WorkerTest do
       printer = %{uri: "ipp://cups:631/printers/TestZebra-Capture"}
       zpl = "^XA^FO50,50^A0N,40,40^FDWorker Test^FS^XZ"
 
-      assert :ok = Worker.print(printer, zpl, "application/vnd.zebra.zpl", 1)
+      assert {:ok, %{cups_job_id: _}} = Worker.print(printer, zpl, "application/vnd.zebra.zpl", 1)
     end
 
     @tag :cups_integration
@@ -18,7 +18,7 @@ defmodule ThermalPrintServer.Printer.WorkerTest do
       # Minimal PDF-like data (printer will accept it for test purposes)
       pdf = "%PDF-1.4 test"
 
-      assert :ok = Worker.print(printer, pdf, "application/pdf", 1)
+      assert {:ok, %{cups_job_id: _}} = Worker.print(printer, pdf, "application/pdf", 1)
     end
 
     @tag :cups_integration
@@ -26,7 +26,7 @@ defmodule ThermalPrintServer.Printer.WorkerTest do
       printer = %{uri: "ipp://cups:631/printers/TestZebra-Capture"}
       zpl = "^XA^FO50,50^A0N,40,40^FDCopies Test^FS^XZ"
 
-      assert :ok = Worker.print(printer, zpl, "application/vnd.zebra.zpl", 3)
+      assert {:ok, %{cups_job_id: _}} = Worker.print(printer, zpl, "application/vnd.zebra.zpl", 3)
     end
 
     test "returns error for unreachable printer" do

@@ -10,7 +10,7 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   alias ThermalPrintServer.Broadway.MessageParser
   alias ThermalPrintServer.Jobs.{Preview, S3Fetcher, Store}
-  alias ThermalPrintServer.Printer.{Registry, Worker}
+  alias ThermalPrintServer.Printer.{JobWatcher, Registry, Worker}
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(_opts) do
@@ -42,7 +42,10 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
         message
 
       {:permanent, reason} ->
-        Logger.error("Print job failed (permanent): #{inspect(reason)}\n  Raw data: #{message.data}")
+        Logger.error(
+          "Print job failed (permanent): #{inspect(reason)}\n  Raw data: #{message.data}"
+        )
+
         track_failure(message.data, reason)
         message
 
@@ -60,9 +63,9 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
          :ok <- check_duplicate(parsed),
          {:ok, parsed} <- resolve_data(parsed),
          {:ok, printer} <- resolve_printer(parsed),
-         :ok <- send_to_printer(printer, parsed) do
+         {:ok, print_result} <- send_to_printer(printer, parsed) do
       preview = generate_preview(parsed)
-      track_success(parsed, preview)
+      track_success(parsed, printer, print_result, preview)
     end
   end
 
@@ -73,12 +76,17 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
     end
   end
 
-  # Terminal states (:completed, :failed) block redelivery; transient errors
-  # aren't recorded so SQS redelivery remains eligible.
+  # Any recorded status means we've already accepted this job into CUPS (or
+  # recorded a permanent failure); transient errors aren't recorded so SQS
+  # redelivery remains eligible.
   defp check_duplicate(%{job_id: job_id}) do
     case Store.get(job_id) do
-      %{status: status} when status in [:completed, :failed] -> {:duplicate, job_id}
-      _ -> :ok
+      %{status: status}
+      when status in [:completed, :failed, :printing, :blocked, :canceled] ->
+        {:duplicate, job_id}
+
+      _ ->
+        :ok
     end
   end
 
@@ -100,8 +108,17 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   defp send_to_printer(printer, parsed) do
     case Worker.print(printer, parsed.data, parsed.content_type, parsed.copies) do
-      :ok -> :ok
-      {:error, reason} -> {:transient, "print failed: #{inspect(reason)}"}
+      {:ok, result} ->
+        {:ok, result}
+
+      # IPP-level rejection (bad format, not authorized, …). Retrying won't
+      # help — show it on the dashboard instead of burning SQS redeliveries.
+      {:error, {:ipp_error, code}} ->
+        {:permanent, "printer rejected job: #{code}"}
+
+      # Network / timeout — these can resolve on their own.
+      {:error, reason} ->
+        {:transient, "print failed: #{inspect(reason)}"}
     end
   end
 
@@ -148,18 +165,38 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
 
   defp count_pages(%{copies: copies}), do: copies
 
-  @spec track_success(MessageParser.parsed(), map() | nil) :: :ok | {:error, term()}
-  defp track_success(parsed, preview) do
+  @spec track_success(MessageParser.parsed(), map(), map(), map() | nil) ::
+          :ok | {:error, term()}
+  defp track_success(parsed, printer, print_result, preview) do
+    cups_job_id = print_result[:cups_job_id]
+
+    # CUPS normally returns a job-id we can poll to a terminal state. If it
+    # doesn't, we have no way to verify what the printer actually did — so
+    # mark `:blocked` to flag it on the dashboard rather than lying about
+    # completion.
     attrs =
-      %{
+      cond do
+        cups_job_id ->
+          %{cups_job_id: cups_job_id, status: :printing}
+
+        true ->
+          Logger.warning(
+            "CUPS returned no job-id for #{parsed.job_id}; marking :blocked (unverifiable)"
+          )
+
+          %{status: :blocked, cups_job_state_reasons: ["no-cups-job-id"]}
+      end
+
+    attrs =
+      attrs
+      |> Map.merge(%{
         printer: parsed.printer,
         label_name: parsed.metadata.label_name,
         content_type: parsed.content_type,
         copies: parsed.copies,
         page_count: count_pages(parsed),
-        reply_to_queue_url: parsed.reply_to_queue_url,
-        status: :completed
-      }
+        reply_to_queue_url: parsed.reply_to_queue_url
+      })
       |> maybe_merge(preview)
 
     Store.record(parsed.job_id, attrs)
@@ -169,6 +206,10 @@ defmodule ThermalPrintServer.Broadway.PrintPipeline do
       "print_jobs",
       {:job_updated, parsed.job_id, attrs}
     )
+
+    if cups_job_id, do: JobWatcher.start(printer, parsed.job_id, cups_job_id)
+
+    :ok
   end
 
   defp maybe_merge(attrs, nil), do: attrs

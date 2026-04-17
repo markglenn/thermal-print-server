@@ -18,6 +18,7 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   attr :printers, :list, required: true
   attr :total_completed, :integer, required: true
   attr :total_failed, :integer, required: true
+  attr :total_blocked, :integer, required: true
   attr :debug_links, :list, default: []
 
   def dashboard_header(assigns) do
@@ -130,6 +131,13 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
           <span class="stat-label">FAILED</span>
           <span class={"stat-value #{if @total_failed > 0, do: "stat-bad", else: "stat-neutral"}"}>
             {@total_failed}
+          </span>
+        </div>
+        <div class="header-divider"></div>
+        <div class="header-stat">
+          <span class="stat-label">STUCK</span>
+          <span class={"stat-value #{if @total_blocked > 0, do: "stat-warn", else: "stat-neutral"}"}>
+            {@total_blocked}
           </span>
         </div>
         <div class="header-divider"></div>
@@ -289,6 +297,8 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
           <option value="">ALL STATUS</option>
           <option value="completed" selected={@filter_status == "completed"}>DONE</option>
           <option value="failed" selected={@filter_status == "failed"}>FAIL</option>
+          <option value="blocked" selected={@filter_status == "blocked"}>STUCK</option>
+          <option value="canceled" selected={@filter_status == "canceled"}>CANCEL</option>
           <option value="printing" selected={@filter_status == "printing"}>SEND</option>
           <option value="queued" selected={@filter_status == "queued"}>WAIT</option>
         </select>
@@ -438,6 +448,22 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
               {@job[:reply_to_queue_url]}
             </dd>
 
+            <dt :if={@job[:cups_job_id]}>CUPS JOB</dt>
+            <dd :if={@job[:cups_job_id]} class="printer-detail-mono">
+              #{@job[:cups_job_id]}{cups_state_suffix(@job[:cups_job_state])}
+            </dd>
+
+            <dt :if={@job[:cups_job_state_reasons] not in [nil, []]}>CUPS REASONS</dt>
+            <dd
+              :if={@job[:cups_job_state_reasons] not in [nil, []]}
+              class="printer-detail-mono"
+            >
+              {format_reasons(@job[:cups_job_state_reasons])}
+            </dd>
+
+            <dt :if={@job[:cups_job_state_message]}>CUPS MESSAGE</dt>
+            <dd :if={@job[:cups_job_state_message]}>{@job[:cups_job_state_message]}</dd>
+
             <dt :if={@job[:error]}>ERROR</dt>
             <dd :if={@job[:error]} class="job-detail-error">{@job[:error]}</dd>
           </dl>
@@ -492,6 +518,17 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
             <dt>STATE</dt>
             <dd>{printer_state_label(@printer[:state])}</dd>
 
+            <dt :if={@printer[:state_reasons] not in [nil, []]}>STATE REASONS</dt>
+            <dd
+              :if={@printer[:state_reasons] not in [nil, []]}
+              class="printer-detail-mono"
+            >
+              {format_reasons(@printer[:state_reasons])}
+            </dd>
+
+            <dt :if={@printer[:state_message]}>STATE MESSAGE</dt>
+            <dd :if={@printer[:state_message]}>{@printer[:state_message]}</dd>
+
             <dt :if={@printer[:info]}>DESCRIPTION</dt>
             <dd :if={@printer[:info]}>{@printer[:info]}</dd>
 
@@ -515,7 +552,6 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
             <dd :if={@printer[:media_ready]}>
               {format_media_list(@printer[:media_ready])}
             </dd>
-
           </dl>
 
           <div class="printer-jobs-section">
@@ -611,14 +647,22 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
       <div class="printers-panel-list">
         <div
           :for={printer <- filtered_printers(@printers, @search)}
-          class="printers-panel-row"
+          class={"printers-panel-row #{printer_health_class(printer)}"}
           phx-click="show_printer"
           phx-value-name={printer.name}
         >
-          <div class="printers-panel-row-dot"></div>
+          <div class={"printers-panel-row-dot #{printer_dot_class(printer)}"}></div>
           <div class="printers-panel-row-info">
             <span class="printers-panel-row-name">{printer.name}</span>
-            <span class="printers-panel-row-uri">{printer.uri}</span>
+            <span
+              :if={printer[:state_reasons] not in [nil, []]}
+              class="printers-panel-row-reasons"
+            >
+              {format_reasons(printer[:state_reasons])}
+            </span>
+            <span :if={printer[:state_reasons] in [nil, []]} class="printers-panel-row-uri">
+              {printer.uri}
+            </span>
           </div>
           <span class="printers-panel-row-state">{printer_state_label(printer[:state])}</span>
         </div>
@@ -664,15 +708,21 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
 
   defp status_class(:completed), do: "status-completed"
   defp status_class(:failed), do: "status-failed"
+  defp status_class(:blocked), do: "status-blocked"
+  defp status_class(:canceled), do: "status-canceled"
   defp status_class(:printing), do: "status-printing"
   defp status_class(_), do: "status-queued"
 
   defp status_label(:completed), do: "DONE"
   defp status_label(:failed), do: "FAIL"
+  defp status_label(:blocked), do: "STUCK"
+  defp status_label(:canceled), do: "CANCEL"
   defp status_label(:printing), do: "SEND"
   defp status_label(_), do: "WAIT"
 
   defp status_row_class(:failed), do: "row-failed"
+  defp status_row_class(:blocked), do: "row-blocked"
+  defp status_row_class(:canceled), do: "row-canceled"
   defp status_row_class(:printing), do: "row-printing"
   defp status_row_class(_), do: ""
 
@@ -690,6 +740,21 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   defp printer_state_label(5), do: "Stopped"
   defp printer_state_label(_), do: "Unknown"
 
+  # A populated state_reasons list means CUPS is reporting something
+  # actionable (offline-report, media-empty, paused, …). State 5 (stopped)
+  # is also a problem worth flagging, even if no reason came back.
+  defp printer_health_class(%{state_reasons: reasons}) when is_list(reasons) and reasons != [],
+    do: "printers-panel-row-unhealthy"
+
+  defp printer_health_class(%{state: 5}), do: "printers-panel-row-unhealthy"
+  defp printer_health_class(_), do: ""
+
+  defp printer_dot_class(%{state_reasons: reasons}) when is_list(reasons) and reasons != [],
+    do: "dot-unhealthy"
+
+  defp printer_dot_class(%{state: 5}), do: "dot-unhealthy"
+  defp printer_dot_class(_), do: ""
+
   defp format_resolution(%{x: x, y: y, unit: unit}) do
     unit_str = if unit == :dpi, do: "dpi", else: "dpcm"
     if x == y, do: "#{x} #{unit_str}", else: "#{x}x#{y} #{unit_str}"
@@ -706,6 +771,14 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   defp format_media_list(media) when is_list(media), do: Enum.join(media, ", ")
   defp format_media_list(media) when is_binary(media), do: media
   defp format_media_list(_), do: "\u2014"
+
+  defp format_reasons(reasons) when is_list(reasons), do: Enum.join(reasons, ", ")
+  defp format_reasons(reason) when is_binary(reason), do: reason
+  defp format_reasons(_), do: "\u2014"
+
+  defp cups_state_suffix(nil), do: ""
+  defp cups_state_suffix(state) when is_atom(state), do: " (#{state})"
+  defp cups_state_suffix(state), do: " (#{state})"
 
   defp copies_suffix(job) do
     copies = job[:copies] || 1
@@ -740,6 +813,8 @@ defmodule ThermalPrintServerWeb.DashboardLive.Components do
   @valid_statuses %{
     "completed" => :completed,
     "failed" => :failed,
+    "blocked" => :blocked,
+    "canceled" => :canceled,
     "printing" => :printing,
     "queued" => :queued
   }
